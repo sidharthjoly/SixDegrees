@@ -1,3 +1,7 @@
+import '@fontsource/rubik-mono-one/400.css';
+import '@fontsource/chakra-petch/500.css';
+import '@fontsource/chakra-petch/600.css';
+import '@fontsource/chakra-petch/700.css';
 import './style.css';
 import { getFilm, getPerson, loadMeta, loadSearch, loader } from './data';
 import {
@@ -18,6 +22,8 @@ import {
 import type { Film, FilmRef, Meta, Person, PersonRef, Qid, SearchRow } from './types';
 
 const app = document.querySelector<HTMLElement>('#app')!;
+/** Outside <main> so the home page's ticker runs the full window width. */
+const tickerSlot = document.querySelector<HTMLElement>('#ticker')!;
 
 // ---------------------------------------------------------------- DOM helper
 
@@ -107,6 +113,7 @@ const summary = (moves: Move[]): MoveSummary[] => moves.map((m) => ({ grade: m.g
 
 async function route(): Promise<void> {
   const gen = ++generation;
+  tickerSlot.replaceChildren();
   const m = /^#\/p\/(\d+)$/.exec(location.hash);
   try {
     if (location.hash === '#/daily') {
@@ -139,7 +146,7 @@ async function randomStart(): Promise<void> {
 // ---------------------------------------------------------------- shared views
 
 function topBar(): HTMLElement {
-  return h('header', { class: 'bar' }, h('a', { href: '#', class: 'home-link' }, 'Six Degrees of ', h('span', { class: 'jt' }, 'JT')));
+  return h('header', { class: 'bar' }, h('a', { href: '#', class: 'home-link' }, 'Six Degrees of JT'));
 }
 
 function renderLoading(text = 'Loading…'): void {
@@ -161,6 +168,34 @@ function renderError(err: unknown): void {
   );
 }
 
+/** Median Timberlake number, from the build's distance histogram. */
+function medianDistance(meta: Meta): number {
+  const rows = Object.entries(meta.histogram)
+    .map(([d, n]) => [Number(d), n] as const)
+    .filter(([d]) => d > 0);
+  const total = rows.reduce((sum, [, n]) => sum + n, 0);
+  let acc = 0;
+  return rows.find(([, n]) => (acc += n) >= total / 2)?.[0] ?? 0;
+}
+
+function ticker(meta: Meta): HTMLElement {
+  const text = [
+    `${meta.people.toLocaleString()} people`,
+    `${meta.films.toLocaleString()} films`,
+    `most are ${plural(medianDistance(meta), 'film')} from JT`,
+    'a new daily every midnight',
+    'hints show up in your share',
+  ]
+    .map((t) => `★ ${t.toUpperCase()}`)
+    .join(' ');
+  // Two identical copies scroll by half their width, so the loop is seamless.
+  return h(
+    'div',
+    { class: 'ticker' },
+    h('div', { class: 'ticker-track' }, h('span', null, text), h('span', { 'aria-hidden': 'true' }, text)),
+  );
+}
+
 interface ChainStep {
   film: FilmRef;
   person: PersonRef;
@@ -169,36 +204,57 @@ interface ChainStep {
   revealed?: boolean;
 }
 
-const GRADE_LABEL: Record<Grade, string> = { closer: 'closer', same: 'no closer', further: 'further' };
+// Chart-movement symbols, so a grade never relies on colour alone.
+const GRADE_LABEL: Record<Grade, string> = { closer: '▲ closer', same: '● no closer', further: '▼ further' };
 
-function chain(start: PersonRef, steps: ChainStep[], opts: { pending?: boolean } = {}): HTMLElement {
-  const items: HTMLElement[] = [h('li', { class: 'node' + (steps.length === 0 && opts.pending ? ' current' : '') }, start.name)];
+/**
+ * A path as a stack of chart entries. In play they're numbered in order (01, 02…) with a
+ * dashed slot for the next film; on the result they count down to #1, the film with JT.
+ */
+function tracks(start: PersonRef, steps: ChainStep[], opts: { pending?: boolean; countdown?: boolean } = {}): HTMLElement {
+  const items: HTMLElement[] = [
+    h(
+      'li',
+      { class: 'track start' + (opts.pending && steps.length === 0 ? ' current' : '') },
+      h('span', { class: 'track-num' }, 'START'),
+      h('div', { class: 'track-body' }, h('span', { class: 'track-title' }, start.name)),
+    ),
+  ];
   steps.forEach((s, i) => {
+    const last = i === steps.length - 1;
     items.push(
-      h(
-        'li',
-        { class: 'link' + (s.revealed ? ' revealed' : '') },
-        h('span', { class: 'film' }, s.film.title, h('span', { class: 'year' }, yearOf(s.film))),
-        s.grade && h('span', { class: `grade ${s.grade}` }, s.hinted ? '💡 ' : '', GRADE_LABEL[s.grade]),
-        s.revealed && h('span', { class: 'grade revealed' }, 'answer'),
-      ),
       h(
         'li',
         {
           class:
-            'node' +
-            (s.person.id === JT ? ' target' : '') +
+            'track' +
             (s.revealed ? ' revealed' : '') +
-            (opts.pending && i === steps.length - 1 ? ' current' : ''),
+            (opts.countdown && last ? ' number-one' : '') +
+            (opts.pending && last ? ' current' : ''),
         },
-        s.person.name,
+        h('span', { class: 'track-num' }, opts.countdown ? `#${steps.length - i}` : String(i + 1).padStart(2, '0')),
+        h(
+          'div',
+          { class: 'track-body' },
+          h('span', { class: 'track-title' }, s.film.title, h('span', { class: 'year' }, yearOf(s.film))),
+          h('span', { class: 'track-sub' }, 'feat. ', h('b', null, s.person.name)),
+          s.grade && h('span', { class: `grade ${s.grade}` }, s.hinted ? '💡 ' : '', GRADE_LABEL[s.grade]),
+          s.revealed && h('span', { class: 'grade answer' }, 'answer'),
+        ),
       ),
     );
   });
   if (opts.pending) {
-    items.push(h('li', { class: 'link pending' }, h('span', { class: 'film' }, '…')), h('li', { class: 'node target ghost' }, 'Justin Timberlake'));
+    items.push(
+      h(
+        'li',
+        { class: 'track pending' },
+        h('span', { class: 'track-num' }, '?'),
+        h('div', { class: 'track-body' }, h('span', { class: 'track-title' }, 'Your next film'), h('span', { class: 'track-sub' }, '…until one features ', h('b', null, 'Justin Timberlake'))),
+      ),
+    );
   }
-  return h('ol', { class: 'chain' }, ...items);
+  return h('ol', { class: 'countdown' }, ...items);
 }
 
 // ---------------------------------------------------------------- home
@@ -211,22 +267,27 @@ async function renderHome(gen: number): Promise<void> {
   const daily = await getPerson(dailyPick(meta.daily, day));
   if (gen !== generation) return;
   document.title = 'Six Degrees of Justin Timberlake';
+  const played = loadDaily(day);
+  tickerSlot.replaceChildren(ticker(meta));
   app.replaceChildren(
     h(
-      'header',
-      { class: 'hero' },
-      h('p', { class: 'eyebrow' }, 'A film trivia game'),
-      h('h1', { class: 'title' }, 'Six Degrees of ', h('span', { class: 'jt' }, 'Justin Timberlake')),
+      'div',
+      { class: 'home' },
       h(
-        'p',
-        { class: 'lede' },
-        `${meta.people.toLocaleString()} actors, athletes and filmmakers are linked to JT through ${meta.films.toLocaleString()} films. `,
-        'Pick a film, pick a co-star, and keep going until you land on Justin.',
+        'div',
+        { class: 'home-main' },
+        h('h1', { class: 'title' }, 'Six Degrees of Justin Timberlake'),
+        h(
+          'p',
+          { class: 'lede' },
+          `${meta.people.toLocaleString()} actors, athletes and filmmakers, all linked to JT through ${meta.films.toLocaleString()} films. `,
+          'Pick a film, pick a co-star, and keep going until you land on Justin.',
+        ),
+        dailyCard(day, daily, played?.start === daily.id ? played : null),
+        startCard(),
       ),
+      h('div', { class: 'home-side' }, h('h2', { class: 'section-label' }, 'How to play · Top 3'), howTo(), histogram(meta)),
     ),
-    dailyCard(day, daily, loadDaily(day)?.start === daily.id ? loadDaily(day) : null),
-    startCard(),
-    histogram(meta),
     h(
       'footer',
       { class: 'footer' },
@@ -239,22 +300,48 @@ async function renderHome(gen: number): Promise<void> {
 function dailyCard(day: string, person: Person, played: DailyResult | null): HTMLElement {
   const n = dayNumber(day);
   const knownFor = person.films[0];
-  const body: Child[] = [
-    h('p', { class: 'eyebrow' }, `Daily #${n}`),
-    h('h2', { class: 'daily-name' }, person.name),
-    knownFor && h('p', { class: 'muted' }, 'Known for ', h('em', null, knownFor.title), yearOf(knownFor)),
-    h('p', { class: 'par' }, `Par ${person.dist}`),
-  ];
+  // Names run from "Pelé" to "Edward Grey, 1st Viscount Grey of Fallodon"; the starburst's
+  // points clip anything near its edge, so long names step down a size.
+  const size = person.name.length > 26 ? ' longer' : person.name.length > 15 ? ' long' : '';
+  const side: Child[] = [knownFor && h('p', { class: 'known' }, 'Known for ', h('em', null, knownFor.title), yearOf(knownFor))];
   if (played) {
     const text = shareText({ daily: n, start: person.name, moves: played.moves, par: played.par, gaveUp: played.gaveUp, url: `${shareBase()}#/daily` });
-    body.push(
+    side.push(
       h('p', { class: 'played' }, played.gaveUp ? 'You gave up today. ' : `You did it in ${plural(played.moves.length, 'film')}. `, h('span', { class: 'emoji' }, emojiRow(played.moves))),
-      h('div', { class: 'row' }, shareButton(text), h('a', { href: '#/daily', class: 'btn ghost' }, 'Play again')),
+      h('div', { class: 'row' }, shareButton(text), h('a', { href: '#/daily', class: 'btn' }, 'Play again')),
     );
   } else {
-    body.push(h('a', { href: '#/daily', class: 'btn primary' }, 'Play today’s challenge'));
+    side.push(h('a', { href: '#/daily', class: 'btn primary' }, 'Play the daily'));
   }
-  return h('section', { class: 'card daily' }, ...body);
+  return h(
+    'section',
+    { class: 'daily', 'aria-label': `Daily challenge number ${n}` },
+    h(
+      'div',
+      { class: 'sticker' },
+      h('span', { class: 'sticker-tag' }, `Daily #${n}`),
+      h('span', { class: 'sticker-name' + size }, person.name),
+      h('span', { class: 'sticker-tag' }, `Par ${person.dist}`),
+    ),
+    h('div', { class: 'daily-side' }, ...side),
+  );
+}
+
+function howTo(): HTMLElement {
+  const step = (num: string, title: string, sub: Child, extra = '') =>
+    h(
+      'li',
+      { class: 'track' + extra },
+      h('span', { class: 'track-num' }, num),
+      h('div', { class: 'track-body' }, h('span', { class: 'track-title' }, title), h('span', { class: 'track-sub' }, sub)),
+    );
+  return h(
+    'ol',
+    { class: 'countdown howto' },
+    step('#3', 'Pick a film', 'Any film your star was credited in.'),
+    step('#2', 'Pick a co-star', 'Anyone else in that film’s cast.'),
+    step('#1', 'Land on Justin', 'Each move charts ▲ closer, ● no closer or ▼ further. Match par to hit #1.', ' number-one'),
+  );
 }
 
 const QUICK_PICKS: [Qid, string][] = [
@@ -294,7 +381,7 @@ function startCard(): HTMLElement {
   const input = h('input', {
     type: 'search',
     id: 'start-search',
-    placeholder: 'Try “Meryl Streep” or “Zidane”',
+    placeholder: 'Any name, e.g. Meryl Streep',
     autocomplete: 'off',
     spellcheck: 'false',
     'aria-controls': 'search-results',
@@ -317,14 +404,14 @@ function startCard(): HTMLElement {
   return h(
     'section',
     { class: 'card' },
-    h('label', { class: 'eyebrow', for: 'start-search' }, 'Start from anyone'),
+    h('label', { class: 'label', for: 'start-search' }, 'Call the request line'),
     input,
     results,
     h(
       'div',
       { class: 'chips' },
       ...QUICK_PICKS.map(([id, name]) => h('a', { class: 'chip', href: `#/p/${id}` }, name)),
-      h('button', { class: 'chip', type: 'button', onclick: () => void randomStart() }, '🎲 Random'),
+      h('button', { class: 'chip shuffle', type: 'button', onclick: () => void randomStart() }, 'Shuffle'),
     ),
   );
 }
@@ -335,8 +422,7 @@ function histogram(meta: Meta): HTMLElement {
     .filter(([d]) => d > 0);
   const total = rows.reduce((s, [, n]) => s + n, 0);
   const max = Math.max(...rows.map(([, n]) => n));
-  let acc = 0;
-  const median = rows.find(([, n]) => (acc += n) >= total / 2)?.[0] ?? 0;
+  const median = medianDistance(meta);
   const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
   const tip = h('div', { class: 'tip', role: 'status' });
 
@@ -355,7 +441,7 @@ function histogram(meta: Meta): HTMLElement {
   return h(
     'section',
     { class: 'card chart' },
-    h('h2', null, 'How far is everyone from JT?'),
+    h('h2', null, 'The charts: how far is everyone?'),
     h('p', { class: 'muted' }, `Most people are ${plural(median, 'film')} away. The farthest are ${plural(rows.at(-1)![0], 'film')} out.`),
     h('div', { class: 'plot', style: `grid-template-columns:repeat(${rows.length},1fr)`, role: 'img', 'aria-label': 'Column chart of people by number of films from Justin Timberlake' }, ...cols),
     h('p', { class: 'axis-label' }, 'Films from Justin Timberlake'),
@@ -398,18 +484,26 @@ function renderPlay(scroll = false): void {
     h(
       'section',
       { class: 'status' },
-      h('p', { class: 'eyebrow' }, g.day ? `Daily #${dayNumber(g.day)}` : 'Free play'),
-      h('h1', { class: 'task' }, 'Connect ', h('strong', null, g.start.name), ' to ', h('strong', { class: 'jt' }, 'Justin Timberlake')),
+      h('span', { class: 'pill' }, g.day ? `Daily #${dayNumber(g.day)}` : 'Free play'),
+      h('h1', { class: 'task' }, g.start.name, h('span', { class: 'to' }, ' → '), 'Justin Timberlake'),
       h('dl', { class: 'meters' }, h('div', null, h('dt', null, 'Films'), h('dd', null, g.moves.length)), h('div', null, h('dt', null, 'Par'), h('dd', null, g.start.dist))),
     ),
-    chain(g.start, g.moves, { pending: true }),
-    panel,
     h(
       'div',
-      { class: 'actions' },
-      h('button', { class: 'btn ghost', type: 'button', disabled: g.busy || (g.moves.length === 0 && !g.film), onclick: undo }, '↶ Undo'),
-      h('button', { class: 'btn ghost', type: 'button', disabled: g.busy || g.hint, onclick: showHint }, '💡 Hint'),
-      h('button', { class: 'btn ghost', type: 'button', disabled: g.busy, onclick: () => void giveUp() }, 'Show me the way'),
+      { class: 'play' },
+      h('div', { class: 'play-list' }, h('h2', { class: 'section-label' }, 'Your setlist'), tracks(g.start, g.moves, { pending: true })),
+      h(
+        'div',
+        { class: 'play-main' },
+        panel,
+        h(
+          'div',
+          { class: 'actions' },
+          h('button', { class: 'btn', type: 'button', disabled: g.busy || (g.moves.length === 0 && !g.film), onclick: undo }, '↶ Undo'),
+          h('button', { class: 'btn', type: 'button', disabled: g.busy || g.hint, onclick: showHint }, '💡 Hint'),
+          h('button', { class: 'btn', type: 'button', disabled: g.busy, onclick: () => void giveUp() }, 'Show me the way'),
+        ),
+      ),
     ),
   );
   if (scroll && panel.getBoundingClientRect().top > window.innerHeight * 0.6) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -454,7 +548,7 @@ function playPanel(g: Game, cur: Person): HTMLElement {
     return h(
       'section',
       { class: 'card panel', 'aria-busy': g.busy ? 'true' : 'false' },
-      h('h2', null, 'Pick a film with ', h('strong', null, cur.name)),
+      h('h2', null, 'Pick a film with ', h('span', { class: 'name' }, cur.name)),
       h('p', { class: 'muted' }, plural(films.length, 'film')),
       films.length > 8 && filter,
       list,
@@ -479,7 +573,7 @@ function playPanel(g: Game, cur: Person): HTMLElement {
             'button',
             { class: 'option' + (p.id === JT ? ' is-jt' : '') + (hinted ? ' hinted' : ''), type: 'button', disabled: g.busy, onclick: () => void choosePerson(p) },
             h('span', { class: 'opt-main' }, hinted ? '💡 ' : '', p.name),
-            h('span', { class: 'opt-meta' }, p.id === JT ? '★' : ''),
+            h('span', { class: 'opt-meta' }, p.id === JT ? '★ #1' : ''),
           ),
         );
       }),
@@ -489,7 +583,7 @@ function playPanel(g: Game, cur: Person): HTMLElement {
     'section',
     { class: 'card panel', 'aria-busy': g.busy ? 'true' : 'false' },
     h('button', { class: 'link-btn', type: 'button', disabled: g.busy, onclick: undo }, '← Other films'),
-    h('h2', null, 'Who else is in ', h('strong', null, film.title), yearOf(film), '?'),
+    h('h2', null, 'Who else is in ', h('span', { class: 'name' }, film.title, yearOf(film)), '?'),
     note,
     cast.length === 0 ? h('p', { class: 'empty' }, 'Nobody else is credited in this film. Try another one.') : h('p', { class: 'muted' }, cast.length === 1 ? '1 other person' : `${cast.length} other people`),
     cast.length > 8 && filter,
@@ -576,12 +670,12 @@ async function finish(g: Game, gaveUp: boolean, revealed: { film: FilmRef; perso
   const par = g.start.dist;
   const helped = g.moves.some((m) => m.hinted);
   const headline = gaveUp
-    ? 'Here’s the way'
+    ? 'Here’s how it charts'
     : n === par
       ? helped
-        ? 'Shortest path, with a little help.'
-        : 'Perfect. That’s the shortest path.'
-      : `You linked them in ${plural(n, 'film')}`;
+        ? '#1, with a little help'
+        : 'Perfect! Straight to #1'
+      : 'You made the countdown!';
   const text = shareText({
     daily: g.day ? dayNumber(g.day) : null,
     start: g.start.name,
@@ -596,14 +690,18 @@ async function finish(g: Game, gaveUp: boolean, revealed: { film: FilmRef; perso
     topBar(),
     h(
       'section',
-      { class: 'card result' + (gaveUp ? '' : ' won') },
-      h('p', { class: 'eyebrow' }, g.day ? `Daily #${dayNumber(g.day)}` : 'Free play'),
+      { class: 'card result' },
+      h('span', { class: 'pill' }, g.day ? `Daily #${dayNumber(g.day)}` : 'Free play'),
       h('h1', null, headline),
       h('p', { class: 'score' }, h('span', { class: 'emoji' }, emojiRow(moves)), ' ', gaveUp ? `${plural(n, 'film')} played, par ${par}` : `${plural(n, 'film')} · par ${par}`),
-      h('div', { class: 'row' }, shareButton(text), h('button', { class: 'btn ghost', type: 'button', onclick: () => void randomStart() }, '🎲 Random actor'), h('a', { href: '#', class: 'btn ghost' }, 'Home')),
+      h('div', { class: 'row' }, shareButton(text), h('button', { class: 'btn', type: 'button', onclick: () => void randomStart() }, 'Random star'), h('a', { href: '#', class: 'btn' }, 'Home')),
     ),
-    h('section', { class: 'card' }, h('h2', null, gaveUp ? 'Your path, finished for you' : 'Your path'), chain(g.start, yours)),
-    ...(gaveUp || n > par ? [h('section', { class: 'card' }, h('h2', null, `Shortest path (${plural(par, 'film')})`), chain(g.start, best))] : []),
+    h(
+      'div',
+      { class: 'result-cols' },
+      h('section', null, h('h2', { class: 'section-label' }, gaveUp ? 'Your countdown, finished for you' : 'Your countdown'), tracks(g.start, yours, { countdown: true })),
+      gaveUp || n > par ? h('section', null, h('h2', { class: 'section-label' }, `Shortest path · ${plural(par, 'film')}`), tracks(g.start, best, { countdown: true })) : null,
+    ),
   );
   window.scrollTo({ top: 0 });
 }
