@@ -19,6 +19,7 @@ PREFIX wd: <http://www.wikidata.org/entity/>
 PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX wikibase: <http://wikiba.se/ontology#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 """
 
 # Feature-length film classes. Short films, music videos, TV specials, sketches and
@@ -68,6 +69,15 @@ SELECT ?person (SAMPLE(?en) AS ?name) (SAMPLE(?mul) AS ?mulName) (SAMPLE(?any) A
   OPTIONAL {{ ?person wikibase:sitelinks ?sl }}
   OPTIONAL {{ ?person wdt:P570 ?death }}
 }} GROUP BY ?person""",
+    # Nicknames and alternative names (CR7, SRK, JT), so search finds people by what
+    # they're actually called. build_graph.py keeps only the search-index people's;
+    # filtering on sitelinks here as well makes QLever return no rows at all.
+    "aliases": f"""
+SELECT DISTINCT ?person ?alias WHERE {{
+  {{ SELECT DISTINCT ?person WHERE {{ {FILM_FILTER} ?film wdt:P161|wdt:P725 ?person . ?person wdt:P31 wd:Q5 . }} }}
+  ?person skos:altLabel ?alias .
+  FILTER(LANG(?alias) = "en" || LANG(?alias) = "mul")
+}}""",
 }
 
 

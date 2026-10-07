@@ -1,0 +1,108 @@
+/* Play screen: status, meters, film and cast panel, actions. */
+
+/* ------------------------------------------------------------ play */
+
+.status {
+  margin: 8px 0 22px;
+}
+
+.pill {
+  display: inline-block;
+  margin-bottom: 10px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #111111;
+  color: var(--lime);
+  font-family: var(--display);
+  font-size: 12px;
+}
+
+.task {
+  font-size: clamp(24px, 3.4vw, 34px);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.task .to {
+  font-weight: 500;
+}
+
+.meters {
+  display: flex;
+  gap: 12px;
+  margin: 14px 0 0;
+}
+
+.meters div {
+  display: flex;
+  align-items: stretch;
+  border: 3px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+
+.meters dt {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  background: var(--card);
+  color: var(--card-ink);
+  font-family: var(--display);
+  font-size: 12px;
+}
+
+.meters dd {
+  margin: 0;
+  min-width: 48px;
+  padding: 4px 10px;
+  background: #111111;
+  color: var(--lime);
+  font-family: var(--display);
+  font-size: 24px;
+  text-align: center;
+}
+
+.play {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0 32px;
+}
+
+.play-list {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.play-main {
+  flex: 999 1 480px;
+  min-width: 0;
+}
+
+.panel .filter {
+  margin: 6px 0 2px;
+}
+
+.panel h2 {
+  overflow-wrap: anywhere;
+}
+
+.panel h2 .name {
+  font-family: var(--text);
+  font-weight: 700;
+  font-size: 20px;
+  text-transform: none;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 26px;
+}
+
+.pill.hard {
+  background: var(--pink);
+  color: #111111;
+}

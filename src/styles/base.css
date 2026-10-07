@@ -1,0 +1,443 @@
+/*
+ * Y2K countdown look: periwinkle dot grid, black outlines with hard shadows, lime and
+ * hot-pink accents. Rubik Mono One is for headings, labels and numbers only; every
+ * name and list uses Chakra Petch, which reads at small sizes and in long lists.
+ */
+
+:root {
+  color-scheme: light;
+  --bg: #b9b4ff;
+  --bg-dot: #a29cf7;
+  --ink: #111111;
+  --muted: #3d3863;
+  --card: #ffffff;
+  --card-ink: #111111;
+  --card-muted: #55516e;
+  --field: #ffffff;
+  --line: #111111;
+  --shadow: #111111;
+  --hover: #eef9d0;
+  --divider: #d9d6ee;
+  --lime: #c6ff3d;
+  --pink: #ff3d9a;
+  --soft: #fff7a8;
+  --block: #111111;
+  --block-ink: #c6ff3d;
+  --closer: #21c55d;
+  --same: #ffd84d;
+  --further: #ff7a59;
+  --focus: #111111;
+  --display: 'Rubik Mono One', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --text: 'Chakra Petch', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Noto Sans', sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #1b1745;
+    --bg-dot: #2b2569;
+    --ink: #f5f3ff;
+    --muted: #c0bbef;
+    --card: #2a2366;
+    --card-ink: #f5f3ff;
+    --card-muted: #c4bff0;
+    --field: #1b1745;
+    --line: #b9b4ff;
+    --shadow: #07061a;
+    --hover: #3a3185;
+    --divider: #453c8c;
+    --soft: #4a2470;
+    --block: #07061a;
+    --focus: #c6ff3d;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--bg-dot) 2px, transparent 2px);
+  background-size: 28px 28px;
+  color: var(--ink);
+  font: 500 16px/1.5 var(--text);
+}
+
+main {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 16px 16px 64px;
+  padding-bottom: max(64px, env(safe-area-inset-bottom));
+}
+
+a {
+  color: inherit;
+}
+
+h1,
+h2 {
+  margin: 0 0 10px;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+p {
+  margin: 0 0 8px;
+}
+
+code {
+  font-size: 0.9em;
+  background: var(--soft);
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.label {
+  display: block;
+  margin: 0 0 8px;
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.card .muted {
+  color: var(--card-muted);
+}
+
+.loading {
+  padding: 64px 0;
+  text-align: center;
+  font-family: var(--display);
+  font-size: 15px;
+}
+
+/* ------------------------------------------------------------ ticker & top bar */
+
+.ticker {
+  overflow: hidden;
+  background: #111111;
+  color: var(--lime);
+  font-family: var(--display);
+  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ticker-track {
+  display: inline-flex;
+  padding: 12px 0;
+  animation: ticker 60s linear infinite;
+}
+
+.ticker-track span {
+  padding-right: 2em;
+}
+
+@keyframes ticker {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  padding: 4px 0 16px;
+}
+
+.home-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 3px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--card-ink);
+  box-shadow: 3px 3px 0 var(--shadow);
+  font-family: var(--display);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+/* ------------------------------------------------------------ buttons & inputs */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 20px;
+  border: 3px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--card-ink);
+  box-shadow: 4px 4px 0 var(--shadow);
+  font: 700 16px/1 var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn:active:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--shadow);
+}
+
+.btn.primary {
+  background: var(--lime);
+  color: #111111;
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.btn.pink {
+  background: var(--pink);
+  color: #111111;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.link-btn {
+  min-height: 44px;
+  margin: -8px 0 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: 700 15px var(--text);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+
+input[type='search'] {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 18px;
+  border: 3px solid var(--line);
+  border-radius: 999px;
+  background: var(--field);
+  color: var(--card-ink);
+  font: 600 16px var(--text);
+}
+
+input[type='search']::placeholder {
+  color: var(--card-muted);
+}
+
+/* ------------------------------------------------------------ cards */
+
+.card {
+  background: var(--card);
+  color: var(--card-ink);
+  border: 3px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 6px 6px 0 var(--shadow);
+  padding: 20px;
+  margin: 0 0 22px;
+}
+
+.card h2 {
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 400;
+  text-transform: uppercase;
+}
+
+.results,
+.options {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.results:empty {
+  display: none;
+}
+
+.option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 2px dashed var(--divider);
+  background: transparent;
+  color: var(--card-ink);
+  font: 600 17px/1.3 var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+li:last-child > .option {
+  border-bottom: 0;
+}
+
+.option:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.option:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.opt-main {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.opt-sub {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--card-muted);
+}
+
+.opt-meta {
+  flex: none;
+  font-size: 14px;
+  color: var(--card-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.option.is-jt {
+  margin: 4px 0;
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  background: var(--pink);
+  color: #111111;
+  font-weight: 700;
+}
+
+.option.is-jt .opt-meta {
+  color: #111111;
+  font-family: var(--display);
+}
+
+.option.hinted {
+  border-radius: 12px;
+  outline: 3px dashed var(--pink);
+  outline-offset: -3px;
+}
+
+.empty,
+.note {
+  padding: 10px 14px;
+  color: var(--card-muted);
+}
+
+.note {
+  margin: 8px 0;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--soft);
+  color: var(--card-ink);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: var(--field);
+  color: var(--card-ink);
+  font: 600 15px var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--lime);
+  color: #111111;
+}
+
+.chip.shuffle {
+  background: var(--pink);
+  color: #111111;
+}
+
+/* ------------------------------------------------------------ footer */
+
+.footer {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: none;
+  }
+
+  /* Modules with their own animations switch them off in their own files. */
+  * {
+    scroll-behavior: auto !important;
+  }
+}
+
+.opt-alias {
+  font-weight: 500;
+  color: var(--card-muted);
+}
+
+.option.banned {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+.option.banned .opt-meta {
+  text-decoration: none;
+  font-family: var(--display);
+  font-size: 11px;
+}

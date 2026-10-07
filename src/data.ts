@@ -1,9 +1,21 @@
 import type { Film, FilmRow, Loader, Meta, Person, PersonRow, Qid, SearchRow } from './types';
 
-const BASE = `${import.meta.env.BASE_URL}data/`;
+/**
+ * Data lives under a content-hashed folder whose name is compiled into the bundle, so a
+ * bundle only ever reads the data it was built against.
+ */
+const BASE = `${import.meta.env.BASE_URL}data/v/${__DATA_VERSION__}/`;
+
+/** The data this bundle was built for has gone: the site was redeployed while the page was open. */
+export class StaleDataError extends Error {
+  constructor() {
+    super('The game was just updated. Reload the page to get the new version.');
+  }
+}
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(BASE + path);
+  if (res.status === 404) throw new StaleDataError();
   if (!res.ok) throw new Error(`Couldn't load ${path} (HTTP ${res.status})`);
   return (await res.json()) as T;
 }
@@ -31,18 +43,23 @@ async function row<T>(kind: 'p' | 'f', id: Qid): Promise<T | undefined> {
   return shard[id];
 }
 
+const reach = (dist: number, parentFilm: Qid, parentPerson: Qid) => ({
+  dist: dist < 0 ? Infinity : dist,
+  parentFilm,
+  parentPerson,
+});
+
 export async function getPerson(id: Qid): Promise<Person> {
   const r = await row<PersonRow>('p', id);
   if (!r) throw new Error(`No one with id Q${id} is connected to Justin Timberlake`);
-  const [name, fame, dist, parentFilm, parentPerson, films] = r;
+  const [name, fame, dist, parentFilm, parentPerson, films, hardDist, hardParentFilm, hardParentPerson] = r;
   return {
     id,
     name,
     fame,
-    dist,
-    parentFilm,
-    parentPerson,
-    films: films.map(([fid, title, year]) => ({ id: fid, title, year })),
+    normal: reach(dist, parentFilm, parentPerson),
+    hard: reach(hardDist, hardParentFilm, hardParentPerson),
+    films: films.map(([fid, title, year, fame]) => ({ id: fid, title, year, fame })),
   };
 }
 
@@ -50,7 +67,7 @@ export async function getFilm(id: Qid): Promise<Film> {
   const r = await row<FilmRow>('f', id);
   if (!r) throw new Error(`Unknown film Q${id}`);
   const [title, year, fame, cast] = r;
-  return { id, title, year, fame, cast: cast.map(([pid, name]) => ({ id: pid, name })) };
+  return { id, title, year, fame, cast: cast.map(([pid, name, fame]) => ({ id: pid, name, fame })) };
 }
 
 export const loader: Loader = { person: getPerson, film: getFilm };

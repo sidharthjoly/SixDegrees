@@ -1,0 +1,155 @@
+/* Countdown / setlist cards and move grades, shared by home, play and result. */
+
+/* ------------------------------------------------------------ countdown cards */
+
+.countdown {
+  list-style: none;
+  margin: 0 0 22px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.track {
+  display: flex;
+  align-items: stretch;
+  min-height: 72px;
+  background: var(--card);
+  color: var(--card-ink);
+  border: 3px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 5px 5px 0 var(--shadow);
+  overflow: hidden;
+}
+
+.track-num {
+  flex: 0 0 76px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--block);
+  color: var(--block-ink);
+  font-family: var(--display);
+  font-size: 26px;
+}
+
+.track-body {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+
+.track-title {
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.track-sub {
+  font-size: 15px;
+  color: var(--card-muted);
+  overflow-wrap: anywhere;
+}
+
+.track-title .year {
+  font-weight: 500;
+  color: var(--card-muted);
+}
+
+.track-sub b {
+  color: var(--card-ink);
+}
+
+.track.start .track-num {
+  background: var(--pink);
+  color: #111111;
+  font-size: 13px;
+}
+
+.track.current {
+  background: var(--soft);
+  color: var(--card-ink);
+}
+
+.track.number-one {
+  background: var(--soft);
+}
+
+.track.number-one .track-num {
+  background: var(--pink);
+  color: #111111;
+}
+
+.track.pending {
+  border-color: var(--ink);
+  border-style: dashed;
+  box-shadow: none;
+  background: transparent;
+  color: var(--ink);
+}
+
+.track.pending .track-num {
+  background: transparent;
+  color: var(--ink);
+  border-right: 3px dashed var(--ink);
+}
+
+.track.pending .track-sub {
+  color: var(--muted);
+}
+
+.track.revealed {
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.howto .track-title {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 15px;
+  text-transform: uppercase;
+}
+
+/* Grades carry a symbol and a word, never colour alone. */
+.grade {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 2px 10px;
+  border: 2px solid #111111;
+  border-radius: 999px;
+  color: #111111;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.grade.closer {
+  background: var(--closer);
+}
+
+.grade.same {
+  background: var(--same);
+}
+
+.grade.further {
+  background: var(--further);
+}
+
+.grade.answer {
+  background: var(--card);
+  color: var(--card-ink);
+  border-color: var(--card-ink);
+}
+
+@media (max-width: 560px) {
+  .track-num {
+    flex-basis: 58px;
+    font-size: 20px;
+  }
+}

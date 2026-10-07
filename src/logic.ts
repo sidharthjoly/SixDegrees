@@ -1,4 +1,4 @@
-import type { FilmRef, Loader, Person, Qid, SearchRow } from './types';
+import type { FilmRef, Loader, Mode, Person, Qid, Reach, SearchRow } from './types';
 
 export const JT: Qid = 43432;
 
@@ -10,15 +10,21 @@ export interface Step {
   person: Person;
 }
 
+/** Distance and first step towards JT in the given mode. */
+export function reachIn(p: Person, mode: Mode): Reach {
+  return mode === 'hard' ? p.hard : p.normal;
+}
+
 /** Follow parent pointers from `from` to JT. Uses only person shards: the film title is in the person's own credits. */
-export async function optimalPath(from: Person, load: Loader): Promise<Step[]> {
+export async function optimalPath(from: Person, load: Loader, mode: Mode = 'normal'): Promise<Step[]> {
   const steps: Step[] = [];
   let cur = from;
   while (cur.id !== JT) {
-    if (steps.length > 20) throw new Error(`Path from Q${from.id} doesn't reach JT`);
-    const film = cur.films.find((f) => f.id === cur.parentFilm);
-    if (!film) throw new Error(`Q${cur.id} has no credit for Q${cur.parentFilm}`);
-    cur = await load.person(cur.parentPerson);
+    const { parentFilm, parentPerson } = reachIn(cur, mode);
+    if (steps.length > 20 || !parentPerson) throw new Error(`Path from Q${from.id} doesn't reach JT`);
+    const film = cur.films.find((f) => f.id === parentFilm);
+    if (!film) throw new Error(`Q${cur.id} has no credit for Q${parentFilm}`);
+    cur = await load.person(parentPerson);
     steps.push({ film, person: cur });
   }
   return steps;
@@ -44,6 +50,7 @@ export function emojiRow(moves: MoveSummary[]): string {
 
 export interface ShareInput {
   daily: number | null;
+  mode: Mode;
   start: string;
   moves: MoveSummary[];
   par: number;
@@ -52,7 +59,7 @@ export interface ShareInput {
 }
 
 export function shareText(s: ShareInput): string {
-  const title = s.daily === null ? 'Six Degrees of JT' : `Six Degrees of JT #${s.daily}`;
+  const title = (s.daily === null ? 'Six Degrees of JT' : `Six Degrees of JT #${s.daily}`) + (s.mode === 'hard' ? ' (hard)' : '');
   const result = s.gaveUp
     ? `gave up after ${plural(s.moves.length, 'film')} (par ${s.par})`
     : `${plural(s.moves.length, 'film')} (par ${s.par})`;
@@ -68,25 +75,36 @@ export function fold(s: string): string {
   return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 }
 
+export interface SearchHit {
+  row: SearchRow;
+  /** The nickname that matched, when the match wasn't on the name itself. */
+  alias?: string;
+}
+
 /**
- * Build a ranked name search over the autocomplete index (already sorted best known first).
- * Rank: exact name, then name prefix, then every query word starting a name word, then substring.
+ * Build a ranked people search over the autocomplete index (already sorted best known first).
+ * Rank: exact name, exact nickname ("CR7"), name prefix, nickname prefix, every query word
+ * starting a name word, then substring. A real name beats a nickname at the same rank, so
+ * "Ronaldo" finds Ronaldo Nazário before Cristiano Ronaldo (whose nickname it is).
  */
-export function makeSearch(index: SearchRow[]): (query: string, limit?: number) => SearchRow[] {
-  const folded = index.map((r) => {
-    const name = fold(r[1]);
-    return { row: r, name, words: name.split(/[\s\-.'’]+/).filter(Boolean) };
+export function makeSearch(index: SearchRow[]): (query: string, limit?: number) => SearchHit[] {
+  const words = (s: string) => s.split(/[\s\-.'’]+/).filter(Boolean);
+  const folded = index.map((row) => {
+    const name = fold(row[1]);
+    return { row, name, words: words(name), aliases: (row[6] ?? []).map((a) => ({ alias: a, key: fold(a) })) };
   });
   return (query, limit = 8) => {
     const q = fold(query).trim().replace(/\s+/g, ' ');
     if (!q) return [];
     const qWords = q.split(' ');
-    const buckets: SearchRow[][] = [[], [], [], []];
-    for (const { row, name, words } of folded) {
-      if (name === q) buckets[0].push(row);
-      else if (name.startsWith(q)) buckets[1].push(row);
-      else if (qWords.every((w) => words.some((nw) => nw.startsWith(w)))) buckets[2].push(row);
-      else if (name.includes(q)) buckets[3].push(row);
+    const buckets: SearchHit[][] = [[], [], [], [], [], []];
+    for (const { row, name, words: nameWords, aliases } of folded) {
+      if (name === q) buckets[0].push({ row });
+      else if (aliases.some((a) => a.key === q)) buckets[1].push({ row, alias: aliases.find((a) => a.key === q)!.alias });
+      else if (name.startsWith(q)) buckets[2].push({ row });
+      else if (aliases.some((a) => a.key.startsWith(q))) buckets[3].push({ row, alias: aliases.find((a) => a.key.startsWith(q))!.alias });
+      else if (qWords.every((w) => nameWords.some((nw) => nw.startsWith(w)))) buckets[4].push({ row });
+      else if (name.includes(q)) buckets[5].push({ row });
     }
     return buckets.flat().slice(0, limit);
   };
@@ -103,9 +121,22 @@ export function dayKey(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+const DAY_MS = 86_400_000;
+
 export function dayNumber(key: string): number {
   const ms = Date.parse(`${key}T00:00:00Z`) - Date.parse(`${EPOCH}T00:00:00Z`);
-  return Math.round(ms / 86_400_000) + 1;
+  return Math.round(ms / DAY_MS) + 1;
+}
+
+/** The YYYY-MM-DD of daily number n (1 = EPOCH). */
+export function dayOfNumber(n: number): string {
+  return new Date(Date.parse(`${EPOCH}T00:00:00Z`) + (n - 1) * DAY_MS).toISOString().slice(0, 10);
+}
+
+/** A real calendar date between the first daily and `today`, inclusive. */
+export function isPlayableDay(key: string, today: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || Number.isNaN(Date.parse(`${key}T00:00:00Z`))) return false;
+  return dayOfNumber(dayNumber(key)) === key && key >= EPOCH && key <= today;
 }
 
 /** FNV-1a, so every player gets the same start for a given day. */
