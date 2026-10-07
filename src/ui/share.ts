@@ -1,6 +1,7 @@
 import { href } from '../router';
 import type { Mode, Qid } from '../types';
 import { h } from './dom';
+import type { ResultContext } from './result';
 
 /** The page's own address without the hash, e.g. https://sixdegrees.sidharthjoly.com/. */
 export const siteBase = () => `${location.origin}${location.pathname}`;
@@ -8,6 +9,11 @@ export const siteBase = () => `${location.origin}${location.pathname}`;
 /** Link that replays the same puzzle: the day's daily, or free play from the same person. */
 export function puzzleUrl(p: { day: string | null; start: Qid; mode: Mode }): string {
   return siteBase() + (p.day ? href({ name: 'daily', day: p.day, mode: p.mode, vs: null }) : href({ name: 'play', qid: p.start, mode: p.mode, vs: null }));
+}
+
+/** The result screen's share controls. */
+export function shareActions(ctx: ResultContext): Node {
+  return shareButton(ctx.text);
 }
 
 /** Shares on phones, copies to the clipboard elsewhere. */

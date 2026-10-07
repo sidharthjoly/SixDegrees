@@ -1,11 +1,34 @@
 import { loader } from '../data';
 import { dayKey, dayNumber, emojiRow, optimalPath, plural, shareText, type MoveSummary, type Step } from '../logic';
 import { saveDaily } from '../storage';
+import type { Mode, Person } from '../types';
+import { challengePanel } from './challenge';
 import { h } from './dom';
-import { distOf, type Game } from './play';
-import { puzzleUrl, shareButton } from './share';
+import { celebrate } from './fx';
+import { distOf, type Game, type Move } from './play';
+import { puzzleUrl, shareActions } from './share';
 import { app, randomStart, topBar } from './shell';
 import { tracks, type ChainStep } from './tracks';
+
+/** Everything the result screen knows, handed to the share and challenge features. */
+export interface ResultContext {
+  /** The daily's date, or null for free play. */
+  day: string | null;
+  mode: Mode;
+  start: Person;
+  par: number;
+  /** The player's own moves. */
+  moves: Move[];
+  gaveUp: boolean;
+  /** The rest of a shortest path from where the player gave up (empty otherwise). */
+  revealed: Step[];
+  /** A shortest path from the start. */
+  best: Step[];
+  /** The plain-text share: title, emoji row, link. */
+  text: string;
+  /** The friend's challenge code this game was started from, if any. */
+  vs: string | null;
+}
 
 export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): Promise<void> {
   const best = await optimalPath(g.start, loader, g.mode);
@@ -46,6 +69,7 @@ export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): P
     url: puzzleUrl({ day: g.day, start: g.start.id, mode: g.mode }),
   });
   const label = (g.day ? `Daily #${dayNumber(g.day)}` : 'Free play') + (g.mode === 'hard' ? ' · Hard' : '');
+  const ctx: ResultContext = { day: g.day, mode: g.mode, start: g.start, par, moves: g.moves, gaveUp, revealed, best, text, vs: g.vs };
 
   const yours: ChainStep[] = [...g.moves, ...revealed.map((s) => ({ ...s, revealed: true }))];
   app.replaceChildren(
@@ -56,8 +80,9 @@ export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): P
       h('span', { class: 'pill' + (g.mode === 'hard' ? ' hard' : '') }, label),
       h('h1', null, headline),
       h('p', { class: 'score' }, h('span', { class: 'emoji' }, emojiRow(moves)), ' ', gaveUp ? `${plural(n, 'film')} played, par ${par}` : `${plural(n, 'film')} · par ${par}`),
-      h('div', { class: 'row' }, shareButton(text), h('button', { class: 'btn', type: 'button', onclick: () => void randomStart(g.mode) }, 'Random star'), h('a', { href: '#/', class: 'btn' }, 'Home')),
+      h('div', { class: 'row' }, shareActions(ctx), h('button', { class: 'btn', type: 'button', onclick: () => void randomStart(g.mode) }, 'Random star'), h('a', { href: '#/', class: 'btn' }, 'Home')),
     ),
+    challengePanel(ctx) ?? '',
     h(
       'div',
       { class: 'result-cols' },
@@ -66,4 +91,5 @@ export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): P
     ),
   );
   window.scrollTo({ top: 0 });
+  if (!gaveUp) celebrate(app.querySelector<HTMLElement>('.track.number-one') ?? app);
 }

@@ -6,6 +6,7 @@ import type { Meta, Person, Qid } from '../types';
 import { h, yearOf, type Child } from './dom';
 import { puzzleUrl, shareButton } from './share';
 import { app, go, isCurrent, randomStart, renderLoading, tickerSlot } from './shell';
+import { statsBadge } from './stats';
 
 /** Median Timberlake number, from the build's distance histogram. */
 export function medianDistance(meta: Meta): number {
@@ -79,7 +80,7 @@ function dailyCard(day: string, person: Person, played: DailyRecord | null, play
   // points clip anything near its edge, so long names step down a size.
   const size = person.name.length > 26 ? ' longer' : person.name.length > 15 ? ' long' : '';
   const hardHref = href({ name: 'daily', day, mode: 'hard', vs: null });
-  const side: Child[] = [knownFor && h('p', { class: 'known' }, 'Known for ', h('em', null, knownFor.title), yearOf(knownFor))];
+  const side: Child[] = [statsBadge(), knownFor && h('p', { class: 'known' }, 'Known for ', h('em', null, knownFor.title), yearOf(knownFor))];
   if (played) {
     const text = shareText({ daily: n, mode: 'normal', start: person.name, moves: played.moves, par: played.par, gaveUp: played.gaveUp, url: puzzleUrl({ day, start: person.id, mode: 'normal' }) });
     side.push(

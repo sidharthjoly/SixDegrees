@@ -1,6 +1,7 @@
 import { getFilm, getPerson, loadMeta, loader } from '../data';
 import { JT, dayNumber, filterByText, grade, optimalPath, plural, reachIn, type Grade } from '../logic';
 import type { Film, FilmRef, Mode, Person, PersonRef, Qid } from '../types';
+import { challengeBanner } from './challenge';
 import { h, yearOf, type Child } from './dom';
 import { finish } from './result';
 import { app, currentGeneration, isCurrent, renderError, renderLoading, renderMessage, topBar } from './shell';
@@ -92,6 +93,7 @@ function renderPlay(scroll = false): void {
       h('h1', { class: 'task' }, g.start.name, h('span', { class: 'to' }, ' → '), 'Justin Timberlake'),
       h('dl', { class: 'meters' }, h('div', null, h('dt', null, 'Films'), h('dd', null, g.moves.length)), h('div', null, h('dt', null, 'Par'), h('dd', null, par(g)))),
     ),
+    challengeBanner(g) ?? '',
     h(
       'div',
       { class: 'play' },
