@@ -1,0 +1,70 @@
+name: Deploy to GitHub Pages
+
+# Every push to main rebuilds the film graph from Wikidata, tests, builds and publishes
+# the site. It also runs on the 2nd of each month to pick up new films and credits.
+#
+# The data comes from the public QLever endpoint (qlever.dev). If it's down the run
+# fails before deploying, and the site that's already live stays as it is.
+#
+# GitHub switches scheduled workflows off after 60 days without commits in public repos.
+# If that happens, re-enable this one from the Actions tab.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 4 2 * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment at a time; don't cancel one mid-flight.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      # Reuse this month's Wikidata download, so pushes mid-month rebuild identical data
+      # and the graph only changes when the month rolls over.
+      - id: month
+        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v6
+        with:
+          path: data/raw
+          key: wikidata-${{ steps.month.outputs.month }}-${{ hashFiles('scripts/fetch_wikidata.py') }}
+
+      - name: Build the film graph from Wikidata
+        run: npm run data
+
+      - run: npm run build
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v5

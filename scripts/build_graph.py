@@ -1,0 +1,228 @@
+"""Turn the raw Wikidata TSVs into the static data the game loads.
+
+Runs one breadth-first search from Justin Timberlake over the film/cast graph, so
+every reachable person gets a Timberlake number and a parent pointer on a shortest
+path back to him. Among equally short paths it prefers the one whose least-known
+film is best known (Wikipedia sitelinks), so revealed answers use recognisable films.
+
+Output (public/data/):
+  meta.json        build stats, distance histogram, daily-challenge pool
+  search.json      people with enough sitelinks to be worth autocompleting
+  p/NN.json        people shard:  qid -> [name, sitelinks, dist, parentFilm, parentPerson, [[film, title, year]...]]
+  f/NN.json        film shard:    qid -> [title, year, sitelinks, [[person, name]...]]
+
+Shard NN is qid % SHARDS, so the client fetches one small file per lookup. Film titles
+and cast names are inlined (best known first) so a list renders from a single shard.
+"""
+
+import collections
+import json
+import re
+import shutil
+import sys
+from datetime import date
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+RAW = ROOT / "data" / "raw"
+OUT = ROOT / "public" / "data"
+
+JT = 43432
+RONALDO = 11571
+SHARDS = 512
+# Films with casts this large are mostly crowd-scene credit dumps; they turn into
+# hubs that make every link trivial. 150 drops ~0.1% of films.
+MAX_CAST = 150
+SEARCH_MIN_SITELINKS = 15
+DAILY_MIN_SITELINKS = 40
+DAILY_MIN_DIST = 2
+
+LITERAL = re.compile(r'^"(.*)"(?:@[\w-]+|\^\^<[^>]*>)?$', re.S)
+
+
+def qid(cell: str) -> int:
+    return int(cell[cell.rfind("Q") + 1 : -1])
+
+
+def literal(cell: str) -> str:
+    m = LITERAL.match(cell)
+    return m.group(1) if m else cell
+
+
+def read_tsv(name: str):
+    with open(RAW / f"{name}.tsv", encoding="utf-8") as fh:
+        next(fh)
+        for line in fh:
+            yield line.rstrip("\n").split("\t")
+
+
+def label(cells: list[str]) -> str | None:
+    for cell in cells:
+        if cell:
+            return literal(cell)
+    return None
+
+
+def load():
+    films: dict[int, tuple[str, int | None, int]] = {}
+    for c in read_tsv("films"):
+        name = label(c[1:4])
+        if name:
+            films[qid(c[0])] = (name, int(literal(c[4])) if c[4] else None, int(literal(c[5])) if c[5] else 0)
+
+    people: dict[int, tuple[str, int]] = {}
+    died: dict[int, int] = {}
+    for c in read_tsv("people"):
+        name = label(c[1:4])
+        if name:
+            people[qid(c[0])] = (name, int(literal(c[4])) if c[4] else 0)
+            if c[5]:
+                died[qid(c[0])] = int(literal(c[5]))
+
+    cast: dict[int, list[int]] = collections.defaultdict(list)
+    archive = 0
+    for f, p in read_tsv("edges"):
+        f, p = qid(f), qid(p)
+        if f not in films or p not in people:
+            continue
+        # Wikidata lists archive footage as ordinary cast (JFK "appears" in Hidden
+        # Figures), and rarely marks it. A film released more than a year after
+        # someone died can only be using old footage, so it doesn't link them.
+        year = films[f][1]
+        if year and p in died and year > died[p] + 1:
+            archive += 1
+            continue
+        cast[f].append(p)
+    print(f"dropped {archive:,} posthumous (archive footage) credits")
+
+    cast = {f: ps for f, ps in cast.items() if len(ps) <= MAX_CAST}
+    credits: dict[int, list[int]] = collections.defaultdict(list)
+    for f, ps in cast.items():
+        for p in ps:
+            credits[p].append(f)
+    return films, people, cast, credits
+
+
+def bfs(films, people, cast, credits):
+    """Layered BFS from JT. best[p] = (weakest film sitelinks, total sitelinks) of p's chosen path."""
+    dist = {JT: 0}
+    parent: dict[int, tuple[int, int]] = {}
+    best = {JT: (10**9, 0)}
+    layer = [JT]
+    while layer:
+        candidates: dict[int, tuple[tuple[int, int], int, int]] = {}
+        for q in layer:
+            for f in credits[q]:
+                fsl = films[f][2]
+                score = (min(best[q][0], fsl), best[q][1] + fsl + people[q][1])
+                for p in cast[f]:
+                    if p in dist:
+                        continue
+                    cur = candidates.get(p)
+                    if cur is None or score > cur[0]:
+                        candidates[p] = (score, f, q)
+        d = dist[layer[0]] + 1
+        for p, (score, f, q) in candidates.items():
+            dist[p] = d
+            parent[p] = (f, q)
+            best[p] = score
+        layer = sorted(candidates)
+    return dist, parent
+
+
+def verify(dist, parent, cast, credits) -> None:
+    """Every parent pointer must be a real shared credit one step closer to JT."""
+    for p, (f, q) in parent.items():
+        if f not in credits[p] or q not in cast[f] or dist[q] != dist[p] - 1:
+            sys.exit(f"FAIL: bad parent pointer Q{p} -> Q{f} -> Q{q}")
+    if len(parent) != len(dist) - 1:
+        sys.exit("FAIL: someone besides JT has no parent pointer")
+
+
+def path_to_jt(p, parent):
+    steps = []
+    while p != JT:
+        f, q = parent[p]
+        steps.append((p, f))
+        p = q
+    return steps
+
+
+def write_json(path: Path, obj) -> int:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+    path.write_text(data, encoding="utf-8")
+    return len(data.encode())
+
+
+def main() -> None:
+    films, people, cast, credits = load()
+    dist, parent = bfs(films, people, cast, credits)
+    verify(dist, parent, cast, credits)
+
+    if RONALDO not in dist:
+        sys.exit("FAIL: Cristiano Ronaldo is not connected to Justin Timberlake")
+    hist = collections.Counter(dist.values())
+    print(f"reachable people: {len(dist):,} of {len(credits):,}")
+    print("distance histogram:", dict(sorted(hist.items())))
+    print(f"Ronaldo -> JT ({dist[RONALDO]}):")
+    for p, f in path_to_jt(RONALDO, parent):
+        print(f"  {people[p][0]}  --[{films[f][0]} ({films[f][1]})]-->")
+    print("  Justin Timberlake")
+
+    # Only the component containing JT is playable.
+    live_films = {f for p in dist for f in credits[p]}
+
+    def by_fame(ids, table, idx):
+        return sorted(ids, key=lambda i: (-table[i][idx], i))
+
+    # Start clean so a change to SHARDS can't leave stale files behind.
+    shutil.rmtree(OUT, ignore_errors=True)
+    pshards: list[dict] = [{} for _ in range(SHARDS)]
+    for p, d in dist.items():
+        name, sl = people[p]
+        pf, pp = parent.get(p, (0, 0))
+        refs = [[f, films[f][0], films[f][1]] for f in by_fame(credits[p], films, 2)]
+        pshards[p % SHARDS][p] = [name, sl, d, pf, pp, refs]
+
+    fshards: list[dict] = [{} for _ in range(SHARDS)]
+    for f in live_films:
+        title, year, sl = films[f]
+        refs = [[p, people[p][0]] for p in by_fame(cast[f], people, 1)]
+        fshards[f % SHARDS][f] = [title, year, sl, refs]
+
+    for kind, shards in (("p", pshards), ("f", fshards)):
+        sizes = [write_json(OUT / kind / f"{i}.json", s) for i, s in enumerate(shards)]
+        print(f"{kind}/: {len(sizes)} shards, {sum(sizes) / 1e6:.1f} MB raw, max {max(sizes) / 1e3:.0f} KB")
+
+    # Autocomplete index: [qid, name, sitelinks, dist, best-known film title]
+    search = []
+    for p, d in dist.items():
+        name, sl = people[p]
+        if sl >= SEARCH_MIN_SITELINKS or p in (JT, RONALDO):
+            top = by_fame(credits[p], films, 2)[0]
+            search.append([p, name, sl, d, films[top][0]])
+    search.sort(key=lambda r: (-r[2], r[0]))
+    size = write_json(OUT / "search.json", search)
+    print(f"search.json: {len(search):,} people, {size / 1e6:.2f} MB raw")
+
+    daily = sorted(
+        p for p, d in dist.items() if d >= DAILY_MIN_DIST and people[p][1] >= DAILY_MIN_SITELINKS
+    )
+    write_json(
+        OUT / "meta.json",
+        {
+            "built": date.today().isoformat(),
+            "people": len(dist),
+            "films": len(live_films),
+            "histogram": {str(k): v for k, v in sorted(hist.items())},
+            "daily": daily,
+            "jt": JT,
+            "shards": SHARDS,
+        },
+    )
+    print(f"daily pool: {len(daily):,} people")
+
+
+if __name__ == "__main__":
+    main()
