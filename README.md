@@ -25,6 +25,8 @@ Cristiano Ronaldo is 3 films away: *Goal III* → David Beckham → *The Man fro
 
 **Graph.** `scripts/build_graph.py` runs one breadth-first search from JT over the person–film graph. Every reachable person gets a Timberlake number and a parent pointer along a shortest path. When several paths tie, it prefers the one whose least-known film is best known (by Wikipedia sitelinks), so revealed answers use films people recognise. The build fails if Ronaldo isn't connected or any parent pointer isn't a real shared credit one step closer.
 
+**Daily pool.** The daily start is someone famous (40+ Wikipedia sitelinks) who is at least 2 films from JT. Their best-known film must have a release year and 15+ sitelinks, and so must every film on the shortest path (10+). Fame alone isn't enough: it let in Czech president Petr Pavel, whose every link to JT runs through obscure Czech films. About 3,500 people qualify. The day's pick uses rendezvous hashing, so a data rebuild that adds or drops other people doesn't change it.
+
 **Static files.** The output is sharded by `qid % 512` into `public/data/p/*.json` (people: name, distance, parent pointer, films) and `public/data/f/*.json` (films: title, year, cast). Titles and names are inlined, so a move loads two small files (about 50 KB gzipped each). There's no server and no API key.
 
 ## Develop

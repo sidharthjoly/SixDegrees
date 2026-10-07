@@ -34,8 +34,12 @@ SHARDS = 512
 # hubs that make every link trivial. 150 drops ~0.1% of films.
 MAX_CAST = 150
 SEARCH_MIN_SITELINKS = 15
+# The daily start must be famous AND reachable through films people know. Fame alone let
+# in Petr Pavel, the Czech president, whose every link to JT is an obscure Czech film.
 DAILY_MIN_SITELINKS = 40
 DAILY_MIN_DIST = 2
+DAILY_TOP_FILM_SITELINKS = 15  # their best-known film; it's shown as "Known for" on the home page
+DAILY_PATH_FILM_SITELINKS = 10  # every film on the shortest path shown as the answer
 
 LITERAL = re.compile(r'^"(.*)"(?:@[\w-]+|\^\^<[^>]*>)?$', re.S)
 
@@ -139,6 +143,24 @@ def verify(dist, parent, cast, credits) -> None:
         sys.exit("FAIL: someone besides JT has no parent pointer")
 
 
+def daily_pool(dist, parent, films, people, credits) -> list[int]:
+    """Famous people whose best-known film and whole answer path are recognisable, dated films."""
+
+    def known(f, min_sitelinks):
+        return films[f][1] is not None and films[f][2] >= min_sitelinks
+
+    pool = []
+    for p, d in dist.items():
+        if d < DAILY_MIN_DIST or people[p][1] < DAILY_MIN_SITELINKS:
+            continue
+        top = max(credits[p], key=lambda f: (films[f][2], -f))
+        if not known(top, DAILY_TOP_FILM_SITELINKS):
+            continue
+        if all(known(f, DAILY_PATH_FILM_SITELINKS) for _, f in path_to_jt(p, parent)):
+            pool.append(p)
+    return sorted(pool)
+
+
 def path_to_jt(p, parent):
     steps = []
     while p != JT:
@@ -206,9 +228,9 @@ def main() -> None:
     size = write_json(OUT / "search.json", search)
     print(f"search.json: {len(search):,} people, {size / 1e6:.2f} MB raw")
 
-    daily = sorted(
-        p for p, d in dist.items() if d >= DAILY_MIN_DIST and people[p][1] >= DAILY_MIN_SITELINKS
-    )
+    daily = daily_pool(dist, parent, films, people, credits)
+    if RONALDO not in daily:
+        print("warning: Cristiano Ronaldo is no longer in the daily pool")
     write_json(
         OUT / "meta.json",
         {
@@ -221,7 +243,8 @@ def main() -> None:
             "shards": SHARDS,
         },
     )
-    print(f"daily pool: {len(daily):,} people")
+    by_par = collections.Counter(dist[p] for p in daily)
+    print(f"daily pool: {len(daily):,} people, by par {dict(sorted(by_par.items()))}")
 
 
 if __name__ == "__main__":
