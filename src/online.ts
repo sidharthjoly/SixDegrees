@@ -28,6 +28,14 @@ export class OnlineError extends Error {
 
 const TIMEOUT_MS = 8000;
 
+/** A signal that aborts after `ms`. AbortSignal.timeout is Safari 16+, so fall back by hand. */
+function timeoutSignal(ms: number): AbortSignal {
+  if (typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(ms);
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
+
 async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
   if (!online) throw new OnlineError('Not connected');
   const headers: Record<string, string> = { apikey: KEY, 'Content-Type': 'application/json' };
@@ -35,7 +43,7 @@ async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
   if (KEY.startsWith('eyJ')) headers.Authorization = `Bearer ${KEY}`;
   let res: Response;
   try {
-    res = await fetch(`${BASE}/rest/v1/rpc/${fn}`, { method: 'POST', headers, body: JSON.stringify(args), signal: AbortSignal.timeout(TIMEOUT_MS) });
+    res = await fetch(`${BASE}/rest/v1/rpc/${fn}`, { method: 'POST', headers, body: JSON.stringify(args), signal: timeoutSignal(TIMEOUT_MS) });
   } catch {
     throw new OnlineError('Couldn’t reach the server');
   }

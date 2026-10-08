@@ -93,7 +93,9 @@ function tokens(s: string): Token[] {
     .trim()
     .split(/\s+/)
     .filter(Boolean)
-    .flatMap((w, i) => w.split(/(?<=-)(?=.)/).map((part, j) => ({ word: part, space: i > 0 && j === 0 })));
+    // Each part keeps its trailing hyphens. Not a split with lookbehind: Safari before 16.4
+    // can't parse one, and it would stop the whole bundle loading (compat.test.ts).
+    .flatMap((w, i) => (w.match(/[^-]+-*|-+/g) ?? [w]).map((part, j) => ({ word: part, space: i > 0 && j === 0 })));
 }
 
 /** Greedy word wrap. A single word wider than the line gets a line of its own (and overflows). */

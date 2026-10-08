@@ -24,7 +24,10 @@
   margin: 0 0 18px;
   color: #ffffff;
   font-family: var(--display);
-  /* Sized to the column: "TIMBERLAKE" is about 9.5em wide in this monospaced face. */
+  /* Sized to the column: "TIMBERLAKE" is about 9.5em wide in this monospaced face. The
+     first line is for browsers without container units (Safari before 16), sized to the
+     screen instead and capped lower, since the column can be narrower than the screen. */
+  font-size: clamp(26px, 8.5vw, 48px);
   font-size: clamp(26px, 10cqi, 64px);
   font-weight: 400;
   line-height: 1.02;
