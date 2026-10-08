@@ -1,0 +1,273 @@
+/* The connected features: "Everyone today" on the result screen, and groups (the home
+   card, the group page and the result-screen boards). Tiles and the chart come from stats.css. */
+
+/* ------------------------------------------------------------ everyone today */
+
+.everyone-lead {
+  margin: 0;
+  font-size: 18px;
+}
+
+.everyone-lead strong {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--lime);
+  color: #111111;
+  font-family: var(--display);
+  font-size: 0.9em;
+  font-weight: 400;
+}
+
+.everyone .score-chart.small {
+  margin-top: 6px;
+}
+
+.everyone-note {
+  margin: 14px 0 0;
+  font-size: 14px;
+}
+
+/* ------------------------------------------------------------ forms */
+
+.text-field {
+  flex: 1 1 200px;
+  min-width: 0;
+  width: 100%;
+  min-height: 50px;
+  padding: 0 18px;
+  border: 3px solid var(--line);
+  border-radius: 999px;
+  background: var(--field);
+  color: var(--card-ink);
+  font: 600 16px var(--text);
+}
+
+.text-field::placeholder {
+  color: var(--card-muted);
+}
+
+.group-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.group-form .label {
+  margin: 8px 0 4px;
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.form-row .btn {
+  flex: 0 1 auto;
+}
+
+.form-status {
+  margin: 8px 0 0;
+  font-weight: 700;
+}
+
+.form-status:empty {
+  display: none;
+}
+
+/* ------------------------------------------------------------ home card */
+
+.group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.group-list:empty {
+  display: none;
+}
+
+.group-link {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 16px;
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  background: var(--field);
+  color: var(--card-ink);
+  box-shadow: 3px 3px 0 var(--shadow);
+  text-decoration: none;
+}
+
+.group-link:hover {
+  background: var(--lime);
+  color: #111111;
+}
+
+.group-link-name {
+  min-width: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.group-link-meta {
+  flex: none;
+  font-size: 14px;
+  color: var(--card-muted);
+}
+
+.group-link:hover .group-link-meta {
+  color: #111111;
+}
+
+.group-start > summary {
+  list-style: none;
+}
+
+.group-start > summary::-webkit-details-marker {
+  display: none;
+}
+
+.group-start[open] > summary {
+  display: none;
+}
+
+/* ------------------------------------------------------------ group page */
+
+.group-invite {
+  align-items: center;
+}
+
+.group-today .chips {
+  margin: 0 0 10px;
+}
+
+.chip.on {
+  background: var(--block);
+  color: var(--block-ink);
+}
+
+.board {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.board-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-height: 46px;
+  padding: 10px 12px;
+  border-bottom: 2px dashed var(--divider);
+}
+
+.board-row:last-child {
+  border-bottom: 0;
+}
+
+.board-row.me {
+  border-radius: 12px;
+  background: var(--soft);
+}
+
+.board-row.unplayed {
+  color: var(--card-muted);
+}
+
+.board-place {
+  flex: 0 0 2ch;
+  font-family: var(--display);
+  font-size: 15px;
+  text-align: right;
+}
+
+.board-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.board-you {
+  font-weight: 500;
+  color: var(--card-muted);
+}
+
+.board-result {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.board-par {
+  padding: 0 8px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--display);
+  font-size: 11px;
+}
+
+.board-more {
+  padding: 8px 12px 0;
+  font-size: 14px;
+}
+
+.week-table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.week-table th,
+.week-table td {
+  padding: 10px 12px;
+  border-bottom: 2px dashed var(--divider);
+  text-align: right;
+}
+
+.week-table th:first-child {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.week-table thead th {
+  border-bottom: 3px solid var(--line);
+  font-family: var(--display);
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: uppercase;
+}
+
+.week-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.week-table tr.me {
+  background: var(--soft);
+}
+
+.group-you .link-btn {
+  margin-top: 14px;
+}
+
+/* ------------------------------------------------------------ result screen */
+
+.group-panel-name {
+  margin: 14px 0 0;
+  font-size: 17px;
+}
+
+.group-panel-name a {
+  text-underline-offset: 4px;
+}

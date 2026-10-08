@@ -56,6 +56,8 @@ export interface ShareInput {
   par: number;
   gaveUp: boolean;
   url: string;
+  /** How the player did against everyone that day, e.g. "Beat 72% of players". */
+  standing?: string | null;
 }
 
 export function shareText(s: ShareInput): string {
@@ -63,7 +65,7 @@ export function shareText(s: ShareInput): string {
   const result = s.gaveUp
     ? `gave up after ${plural(s.moves.length, 'film')} (par ${s.par})`
     : `${plural(s.moves.length, 'film')} (par ${s.par})`;
-  return [title, `${s.start} → Justin Timberlake`, `${emojiRow(s.moves)} ${result}`.trim(), s.url].join('\n');
+  return [title, `${s.start} → Justin Timberlake`, `${emojiRow(s.moves)} ${result}`.trim(), s.standing, s.url].filter(Boolean).join('\n');
 }
 
 export function plural(n: number, word: string): string {

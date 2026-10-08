@@ -87,6 +87,12 @@ describe('grading and sharing', () => {
     expect(text).toBe('Six Degrees of JT #4\nCristiano Ronaldo → Justin Timberlake\n🟩🟩🟩 3 films (par 3)\nhttps://example.test/#/daily');
   });
 
+  it('adds the standing under the score when there is one', () => {
+    const base = { daily: 1, mode: 'normal' as const, start: 'X', moves: [{ grade: 'closer' as const, hinted: false }], par: 1, gaveUp: false, url: 'u' };
+    expect(shareText({ ...base, standing: 'Beat 72% of players' })).toBe('Six Degrees of JT #1\nX → Justin Timberlake\n🟩 1 film (par 1)\nBeat 72% of players\nu');
+    expect(shareText({ ...base, standing: null })).toBe(shareText(base));
+  });
+
   it('marks hard mode and giving up', () => {
     const text = shareText({ daily: null, mode: 'hard', start: 'X', moves: [{ grade: 'further', hinted: false }], par: 2, gaveUp: true, url: 'u' });
     expect(text).toContain('🟥 gave up after 1 film (par 2)');

@@ -12,10 +12,12 @@ describe('parseRoute', () => {
     expect(parseRoute('#/p/11571/hard')).toEqual({ name: 'play', qid: 11571, mode: 'hard', vs: null });
     expect(parseRoute('#/archive')).toEqual({ name: 'archive' });
     expect(parseRoute('#/stats')).toEqual({ name: 'stats' });
+    expect(parseRoute('#/g/nhdxc4tcbv')).toEqual({ name: 'group', code: 'nhdxc4tcbv' });
+    expect(parseRoute('#/g/NHDXC4TCBV')).toEqual({ name: 'group', code: 'nhdxc4tcbv' });
   });
 
   it('rejects malformed routes instead of guessing', () => {
-    for (const bad of ['#/daily/yesterday', '#/daily/2026-10-08/easy', '#/p/abc', '#/p/1/hard/x', '#/nope', '#/stats/x']) {
+    for (const bad of ['#/daily/yesterday', '#/daily/2026-10-08/easy', '#/p/abc', '#/p/1/hard/x', '#/nope', '#/stats/x', '#/g', '#/g/a b', '#/g/abc/x']) {
       expect(parseRoute(bad)).toEqual({ name: 'unknown' });
     }
   });
@@ -36,6 +38,7 @@ describe('href', () => {
       { name: 'play', qid: 7, mode: 'hard', vs: null },
       { name: 'archive' },
       { name: 'stats' },
+      { name: 'group', code: 'nhdxc4tcbv' },
     ];
     for (const r of routes) expect(parseRoute(href(r))).toEqual(r);
   });

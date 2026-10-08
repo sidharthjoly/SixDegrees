@@ -94,7 +94,7 @@ export async function renderStats(gen: number): Promise<void> {
   );
 }
 
-interface Tile {
+export interface Tile {
   value: string;
   label: string;
   detail: string;
@@ -106,7 +106,7 @@ function rateTile(label: string, part: number, whole: number): Tile {
   return { value: pct === null ? '–' : `${pct}%`, label, detail: whole ? `${part} of ${plural(whole, 'game')}` : 'no games yet' };
 }
 
-function tiles(list: Tile[], small = false): HTMLElement {
+export function tiles(list: Tile[], small = false): HTMLElement {
   return h(
     'dl',
     { class: 'stat-tiles' + (small ? ' small' : '') },
@@ -125,7 +125,7 @@ const BUCKET_TICK: Record<Bucket, string> = { par: 'Par', plus1: '+1', plus2: '+
 const BUCKET_LABEL: Record<Bucket, string> = { par: 'Par or better', plus1: 'One over par', plus2: 'Two over par', plus3: 'Three or more over par', gaveUp: 'Gave up' };
 
 /** Column chart of results by films over par, styled and made accessible like the home page's. */
-function scoreChart(s: ModeStats, title: string, caption: string, small = false): HTMLElement {
+export function scoreChart(s: ModeStats, title: string, caption: string, small = false): HTMLElement {
   const max = Math.max(...BUCKETS.map((b) => s.distribution[b]));
   const tip = h('div', { class: 'tip', role: 'status' });
   const cols = BUCKETS.map((b) => {

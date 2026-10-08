@@ -60,6 +60,26 @@ export function saveDaily(rec: DailyRecord): void {
   }
 }
 
+const NAME_KEY = 'sixdeg:name';
+
+/** The name the player last gave (for challenges and groups), as typed; callers clean it. */
+export function loadPlayerName(): string {
+  try {
+    return store()?.getItem(NAME_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function savePlayerName(name: string): void {
+  try {
+    if (name) store()?.setItem(NAME_KEY, name);
+    else store()?.removeItem(NAME_KEY);
+  } catch {
+    // Blocked storage: the name just isn't remembered.
+  }
+}
+
 /** Every saved daily, oldest first. */
 export function listDailies(): DailyRecord[] {
   const s = store();

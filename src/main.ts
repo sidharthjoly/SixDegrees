@@ -12,11 +12,14 @@ import './styles/stats.css';
 import './styles/share.css';
 import './styles/squares.css';
 import './styles/challenge.css';
+import './styles/online.css';
 import { loadMeta } from './data';
 import { dailyPick, dayKey, isPlayableDay } from './logic';
 import { parseRoute } from './router';
+import { flushPending } from './online';
 import { migrateV1 } from './storage';
 import { renderArchive } from './ui/archive';
+import { renderGroup } from './ui/groups';
 import { renderHome } from './ui/home';
 import { startGame } from './ui/play';
 import { beginNavigation, isCurrent, renderError, renderMessage } from './ui/shell';
@@ -42,6 +45,8 @@ async function route(): Promise<void> {
         return await renderArchive(gen);
       case 'stats':
         return await renderStats(gen);
+      case 'group':
+        return await renderGroup(r.code, gen);
       case 'unknown':
         return renderMessage('Page not found', 'That link doesn’t lead anywhere in the game.');
     }
@@ -51,5 +56,6 @@ async function route(): Promise<void> {
 }
 
 migrateV1();
+flushPending();
 window.addEventListener('hashchange', () => void route());
 void route();

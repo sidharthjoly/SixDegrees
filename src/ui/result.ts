@@ -1,10 +1,13 @@
 import { loader } from '../data';
 import { dayKey, dayNumber, emojiRow, optimalPath, plural, shareText, type MoveSummary, type Step } from '../logic';
+import { submitResult, standingText } from '../online';
 import { saveDaily } from '../storage';
 import type { Mode, Person } from '../types';
 import { challengePanel } from './challenge';
 import { h } from './dom';
+import { everyonePanel } from './everyone';
 import { celebrate } from './fx';
+import { groupsPanel } from './groups';
 import { distOf, type Game, type Move } from './play';
 import { puzzleUrl, shareActions } from './share';
 import { app, randomStart, topBar } from './shell';
@@ -24,8 +27,8 @@ export interface ResultContext {
   revealed: Step[];
   /** A shortest path from the start. */
   best: Step[];
-  /** The plain-text share: title, emoji row, link. */
-  text: string;
+  /** The plain-text share: title, emoji row, standing (once known), link. Read it when sharing. */
+  readonly text: string;
   /** The friend's challenge code this game was started from, if any. */
   vs: string | null;
   /** How the player stood against everyone that day ("Beat 72% of players"), once known. */
@@ -37,20 +40,13 @@ export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): P
   const moves: MoveSummary[] = g.moves.map((m) => ({ grade: m.grade, hinted: m.hinted }));
   const n = g.moves.length;
   const par = distOf(g, g.start);
+  const late = !!g.day && g.day !== dayKey(new Date());
+  const path = g.moves.map((m): [number, number] => [m.film.id, m.person.id]);
+  // Dailies also go to the server (when there is one) for the day's stats and groups.
+  let uploaded: Promise<void> = Promise.resolve();
   if (g.day) {
-    const today = dayKey(new Date());
-    saveDaily({
-      v: 2,
-      day: g.day,
-      mode: g.mode,
-      start: g.start.id,
-      par,
-      moves,
-      path: g.moves.map((m) => [m.film.id, m.person.id]),
-      gaveUp,
-      late: g.day !== today,
-      at: new Date().toISOString(),
-    });
+    saveDaily({ v: 2, day: g.day, mode: g.mode, start: g.start.id, par, moves, path, gaveUp, late, at: new Date().toISOString() });
+    uploaded = submitResult({ day: g.day, mode: g.mode, par, moves, path, gaveUp, late }).catch(() => undefined);
   }
 
   const helped = g.moves.some((m) => m.hinted);
@@ -61,20 +57,40 @@ export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): P
         ? '#1, with a little help'
         : 'Perfect! Straight to #1'
       : 'You made the countdown!';
-  const text = shareText({
-    daily: g.day ? dayNumber(g.day) : null,
-    mode: g.mode,
-    start: g.start.name,
-    moves,
-    par,
-    gaveUp,
-    url: puzzleUrl({ day: g.day, start: g.start.id, mode: g.mode }),
-  });
+  // Filled in once the day's stats arrive, and from then on part of what's shared.
+  let standing: string | null = null;
+  const text = () =>
+    shareText({
+      daily: g.day ? dayNumber(g.day) : null,
+      mode: g.mode,
+      start: g.start.name,
+      moves,
+      par,
+      gaveUp,
+      url: puzzleUrl({ day: g.day, start: g.start.id, mode: g.mode }),
+      standing,
+    });
   const label = (g.day ? `Daily #${dayNumber(g.day)}` : 'Free play') + (g.mode === 'hard' ? ' · Hard' : '');
-  const ctx: ResultContext = { day: g.day, mode: g.mode, start: g.start, par, moves: g.moves, gaveUp, revealed, best, text, vs: g.vs };
+  const ctx: ResultContext = {
+    day: g.day,
+    mode: g.mode,
+    start: g.start,
+    par,
+    moves: g.moves,
+    gaveUp,
+    revealed,
+    best,
+    get text() {
+      return text();
+    },
+    vs: g.vs,
+    standing: () => standing,
+  };
 
   const yours: ChainStep[] = [...g.moves, ...revealed.map((s) => ({ ...s, revealed: true }))];
   const panel = challengePanel(ctx);
+  const everyone = g.day ? everyonePanel({ day: g.day, mode: g.mode, par, films: n, gaveUp, late }, uploaded, (stats) => (standing = late ? null : standingText(stats, gaveUp))) : null;
+  const groups = g.day ? groupsPanel(g.day, g.mode, uploaded) : null;
   // A friend's challenge shows your countdown beside theirs, so don't repeat it below.
   const compared = !!panel?.querySelector('.vs-cols');
   app.replaceChildren(
@@ -87,6 +103,8 @@ export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): P
       h('p', { class: 'score' }, h('span', { class: 'emoji' }, emojiRow(moves)), ' ', gaveUp ? `${plural(n, 'film')} played, par ${par}` : `${plural(n, 'film')} · par ${par}`),
       h('div', { class: 'row' }, shareActions(ctx), h('button', { class: 'btn', type: 'button', onclick: () => void randomStart(g.mode) }, 'Random star'), h('a', { href: '#/', class: 'btn' }, 'Home')),
     ),
+    everyone ?? '',
+    groups ?? '',
     panel ?? '',
     h(
       'div',

@@ -1,9 +1,11 @@
 import { getPerson, loadMeta, loadSearch } from '../data';
 import { JT, dailyPick, dayKey, dayNumber, emojiRow, makeSearch, plural, shareText, type SearchHit } from '../logic';
+import { online } from '../online';
 import { href } from '../router';
 import { loadDaily, type DailyRecord } from '../storage';
 import type { Meta, Person, Qid } from '../types';
 import { h, yearOf, type Child } from './dom';
+import { groupsCard } from './groups';
 import { puzzleUrl, shareButton } from './share';
 import { startHomeFx } from './homefx';
 import { app, go, isCurrent, randomStart, renderLoading, tickerSlot } from './shell';
@@ -62,6 +64,7 @@ export async function renderHome(gen: number): Promise<void> {
         'Pick a film, pick a co-star, and keep going until you land on Justin.',
       ),
       dailyCard(day, daily, played('normal'), played('hard')),
+      groupsCard() ?? '',
       startCard(),
     ),
     h('div', { class: 'home-side' }, h('h2', { class: 'section-label' }, 'How to play · Top 3'), howTo(meta), histogram(meta)),
@@ -73,6 +76,7 @@ export async function renderHome(gen: number): Promise<void> {
       { class: 'footer' },
       h('p', { class: 'footer-links' }, h('a', { href: href({ name: 'archive' }) }, 'Past dailies'), ' · ', h('a', { href: href({ name: 'stats' }) }, 'Your charts')),
       h('p', null, 'Film and cast data from ', h('a', { href: 'https://www.wikidata.org/', rel: 'noopener' }, 'Wikidata'), ` (CC0), built ${meta.built}. Paths and par come from a breadth-first search over every credit.`),
+      online && h('p', null, 'Daily results are counted, without names, for the day’s global stats.'),
       h('p', null, 'A fan project. Not affiliated with Justin Timberlake.'),
     ),
   );

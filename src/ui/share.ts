@@ -124,9 +124,11 @@ interface CardImages {
 function cardImages(ctx: ResultContext): CardImages {
   const pending = new Map<string, Promise<Blob>>();
   const done = new Map<string, Blob>();
+  // A story drawn before the day's standing arrived is redrawn with it.
+  const keyOf = (v: Variant) => variantKey(v) + (v.format === 'story' ? `:${ctx.standing?.() ?? ''}` : '');
   return {
     get(v) {
-      const key = variantKey(v);
+      const key = keyOf(v);
       let p = pending.get(key);
       if (!p) {
         const site = displaySite(siteBase());
@@ -136,7 +138,7 @@ function cardImages(ctx: ResultContext): CardImages {
       }
       return p;
     },
-    ready: (v) => done.get(variantKey(v)),
+    ready: (v) => done.get(keyOf(v)),
   };
 }
 

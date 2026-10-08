@@ -1,6 +1,7 @@
 import { MAX_NAME_LENGTH, cleanName, compareResults, decodeChallenge, encodeChallenge, sideOf, type Challenge, type Reason, type Side } from '../challenge-code';
 import { getPerson } from '../data';
 import { dayNumber, plural, reachIn, shareText, type MoveSummary } from '../logic';
+import { loadPlayerName, savePlayerName } from '../storage';
 import type { Mode, Person, Qid } from '../types';
 import { h } from './dom';
 import type { Game } from './play';
@@ -173,25 +174,6 @@ async function friendSteps(start: Person, c: Challenge, path: [Qid, Qid][]): Pro
 
 /* ------------------------------------------------------------ sending a challenge */
 
-const NAME_KEY = 'sixdeg:name';
-
-function loadName(): string {
-  try {
-    return cleanName(window.localStorage.getItem(NAME_KEY) ?? '');
-  } catch {
-    return '';
-  }
-}
-
-function saveName(name: string): void {
-  try {
-    if (name) window.localStorage.setItem(NAME_KEY, name);
-    else window.localStorage.removeItem(NAME_KEY);
-  } catch {
-    // Blocked storage: the name just isn't remembered.
-  }
-}
-
 /** The link to this puzzle with your result attached, or null if the game is too long to pack. */
 function challengeUrl(ctx: ResultContext, name: string): string | null {
   const vs = encodeChallenge({
@@ -221,8 +203,8 @@ function sendForm(ctx: ResultContext, intro: string | null): HTMLElement {
     autocomplete: 'nickname',
     spellcheck: 'false',
     placeholder: 'So they know who to beat',
-    value: loadName(),
-    onchange: () => saveName(cleanName(input.value)),
+    value: cleanName(loadPlayerName()),
+    onchange: () => savePlayerName(cleanName(input.value)),
   });
   const label = 'Challenge a friend';
   const btn = h('button', { class: 'btn primary', type: 'button' }, label);
@@ -231,7 +213,7 @@ function sendForm(ctx: ResultContext, intro: string | null): HTMLElement {
   btn.addEventListener('click', async () => {
     const name = cleanName(input.value);
     input.value = name;
-    saveName(name);
+    savePlayerName(name);
     const url = challengeUrl(ctx, name);
     fallback.replaceChildren();
     if (!url) {

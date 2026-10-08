@@ -7,6 +7,7 @@ import type { Mode, Qid } from './types';
  *   #/daily/2026-10-08         a given day's daily; add /hard for hard mode
  *   #/p/11571                  free play from a person; add /hard for hard mode
  *   #/archive, #/stats
+ *   #/g/abcdefgh23             a group's board
  * Daily and free-play routes may carry ?vs=<code>, a friend's result to beat.
  */
 export type Route =
@@ -15,6 +16,7 @@ export type Route =
   | { name: 'play'; qid: Qid; mode: Mode; vs: string | null }
   | { name: 'archive' }
   | { name: 'stats' }
+  | { name: 'group'; code: string }
   | { name: 'unknown' };
 
 /** Longest ?vs= code accepted; anything longer is ignored rather than parsed. */
@@ -40,6 +42,8 @@ export function parseRoute(hash: string): Route {
   }
   if (parts.length === 1 && parts[0] === 'archive') return { name: 'archive' };
   if (parts.length === 1 && parts[0] === 'stats') return { name: 'stats' };
+  // Codes are lower case, but a link typed from someone reading it out might not be.
+  if (parts.length === 2 && parts[0] === 'g' && /^[a-z0-9]{4,16}$/i.test(parts[1])) return { name: 'group', code: parts[1].toLowerCase() };
   return { name: 'unknown' };
 }
 
@@ -57,5 +61,7 @@ export function href(route: Route): string {
       return '#/archive';
     case 'stats':
       return '#/stats';
+    case 'group':
+      return `#/g/${route.code}`;
   }
 }
