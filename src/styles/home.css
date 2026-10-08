@@ -56,14 +56,14 @@
 }
 
 .sticker {
+  position: relative;
+  isolation: isolate;
   flex: none;
   width: 250px;
   height: 250px;
   /* px, not %: percentage padding is measured against the parent's width. */
   padding: 52px;
-  background: var(--pink);
   color: #111111;
-  clip-path: polygon(50% 0%, 61% 12%, 77% 6%, 79% 22%, 95% 25%, 89% 40%, 100% 50%, 89% 60%, 95% 75%, 79% 78%, 77% 94%, 61% 88%, 50% 100%, 39% 88%, 23% 94%, 21% 78%, 5% 75%, 11% 60%, 0% 50%, 11% 40%, 5% 25%, 21% 22%, 23% 6%, 39% 12%);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -71,6 +71,18 @@
   gap: 4px;
   text-align: center;
   transform: rotate(-8deg);
+}
+
+/* The starburst is its own layer behind the text, so it can turn while the text stays put.
+   Its points start about 40% of the way out from the centre, a solid pink circle that the
+   text (inside the padding) never leaves, whatever the angle. */
+.sticker::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--pink);
+  clip-path: polygon(50% 0%, 61% 12%, 77% 6%, 79% 22%, 95% 25%, 89% 40%, 100% 50%, 89% 60%, 95% 75%, 79% 78%, 77% 94%, 61% 88%, 50% 100%, 39% 88%, 23% 94%, 21% 78%, 5% 75%, 11% 60%, 0% 50%, 11% 40%, 5% 25%, 21% 22%, 23% 6%, 39% 12%);
 }
 
 .sticker-tag {
@@ -256,6 +268,29 @@
 
   .home.fx .sticker-link:hover .sticker {
     transform: rotate(-8deg) scale(1.04);
+  }
+
+  /*
+   * On touch screens the starburst turns with the page instead, behind text that stays
+   * still: a full turn over the first 1000px of scrolling, back again on the way up. It's a
+   * scroll-driven animation, so the browser runs it off the main thread with no script, and
+   * older browsers without them just leave it still. With a mouse the sticker tilts toward
+   * the cursor and the dot grid bulges, which is motion enough.
+   */
+  @supports (animation-timeline: scroll()) {
+    @media (pointer: coarse) {
+      .home.fx .sticker::before {
+        animation: sticker-spin linear both;
+        animation-timeline: scroll(root);
+        animation-range: 0px 1000px;
+      }
+    }
+  }
+
+  @keyframes sticker-spin {
+    to {
+      rotate: 1turn;
+    }
   }
 
   /* The how-to countdown arrives in order as it scrolls into view: #3, #2, #1. */

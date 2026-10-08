@@ -5,8 +5,7 @@ import { onLeave } from './shell';
  * - the how-to countdown and the chart appear as they scroll into view;
  * - with a mouse, the hard shadows lean away from the cursor (it's the light), the dot
  *   grid bulges under it as if something were pressing up behind the page, and the daily
- *   sticker (a link) tilts towards it;
- * - on a touch screen, the grid bulges under the finger, following it as the page scrolls.
+ *   sticker (a link) tilts towards it.
  * Nothing runs under prefers-reduced-motion, and everything is torn down on leaving.
  */
 export function startHomeFx(home: HTMLElement): void {
@@ -14,7 +13,6 @@ export function startHomeFx(home: HTMLElement): void {
   home.classList.add('fx');
   revealOnScroll(home);
   if (matchMedia('(pointer: fine)').matches) followPointer(home);
-  else if (matchMedia('(pointer: coarse)').matches) followTouch();
 }
 
 function revealOnScroll(home: HTMLElement): void {
@@ -94,48 +92,14 @@ function followPointer(home: HTMLElement): void {
   });
 }
 
-/**
- * The bulge under a finger. Touch events keep coming while the page scrolls under the
- * finger, so the bulge rides along with the scroll, then eases flat after the finger lifts
- * (while any fling carries on). Listeners are passive: scrolling never waits on them.
- */
-function followTouch(): void {
-  const field = dotField(TOUCH_BULGE);
-  const at = (e: TouchEvent) => {
-    const t = e.touches[0];
-    if (t) field.press(t.clientX, t.clientY);
-  };
-  const end = (e: TouchEvent) => {
-    if (e.touches.length === 0) field.release();
-  };
-  const opts = { passive: true } as const;
-  window.addEventListener('touchstart', at, opts);
-  window.addEventListener('touchmove', at, opts);
-  window.addEventListener('touchend', end, opts);
-  window.addEventListener('touchcancel', end, opts);
-  onLeave(() => {
-    window.removeEventListener('touchstart', at);
-    window.removeEventListener('touchmove', at);
-    window.removeEventListener('touchend', end);
-    window.removeEventListener('touchcancel', end);
-    field.destroy();
-  });
-}
-
 /** Must match the CSS dot grid in base.css: 28px tiles, 2px dots at each tile's centre. */
 const GRID = 28;
 const DOT_RADIUS = 2;
 /** The bulge: how wide it reaches, how far it pushes dots, and how much it enlarges them. */
-interface Bulge {
-  radius: number;
-  push: number;
-  grow: number;
-}
-const MOUSE_BULGE: Bulge = { radius: 150, push: 10, grow: 0.6 };
-/** A fingertip hides its own middle, and on a phone the grid shows mostly in the gaps
-    between cards, so it reaches a little further. */
-const TOUCH_BULGE: Bulge = { radius: 180, push: 11, grow: 0.6 };
-/** t·(1−t²)² peaks at t = 1/√5 with this value; dividing by it makes the peak push `push`. */
+const BULGE_RADIUS = 150;
+const MAX_PUSH_PX = 10;
+const MAX_GROW = 0.6;
+/** t·(1−t²)² peaks at t = 1/√5 with this value; dividing by it makes the peak push MAX_PUSH_PX. */
 const PUSH_PEAK = (1 / Math.sqrt(5)) * (1 - 1 / 5) ** 2;
 
 /**
@@ -145,7 +109,7 @@ const PUSH_PEAK = (1 / Math.sqrt(5)) * (1 - 1 / 5) ** 2;
  * stays continuous. The bulge trails the cursor slightly and eases flat when it leaves.
  * It only redraws while something is moving or the page scrolls.
  */
-function dotField(shape: Bulge = MOUSE_BULGE) {
+function dotField() {
   const canvas = document.createElement('canvas');
   canvas.className = 'dot-field';
   canvas.setAttribute('aria-hidden', 'true');
@@ -192,12 +156,12 @@ function dotField(shape: Bulge = MOUSE_BULGE) {
           const dx = x - bulge.x;
           const dy = y - bulge.y;
           const d = Math.hypot(dx, dy);
-          if (d < shape.radius && d > 0.01) {
-            const t = d / shape.radius;
-            const push = ((t * (1 - t * t) ** 2) / PUSH_PEAK) * shape.push * bulge.strength;
+          if (d < BULGE_RADIUS && d > 0.01) {
+            const t = d / BULGE_RADIUS;
+            const push = ((t * (1 - t * t) ** 2) / PUSH_PEAK) * MAX_PUSH_PX * bulge.strength;
             px += (dx / d) * push;
             py += (dy / d) * push;
-            r *= 1 + shape.grow * (1 - t) ** 2 * bulge.strength;
+            r *= 1 + MAX_GROW * (1 - t) ** 2 * bulge.strength;
           }
         }
         ctx.moveTo(px + r, py);
