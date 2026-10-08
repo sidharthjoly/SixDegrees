@@ -175,6 +175,8 @@
   padding: 0 14px;
   font-size: 15px;
   color: var(--card-muted);
+  /* It quotes what was typed, which can be one long unbroken word. */
+  overflow-wrap: anywhere;
 }
 
 /* One-line keyboard legend, desktop only (play.ts adds it for fine pointers). */
@@ -226,6 +228,9 @@
     flex: 1 0 auto;
     display: flex;
     flex-direction: column;
+    /* One column, so no wrapping: a wrapping flex column sizes itself to its widest
+       content, and one long unbroken line would make the whole page scroll sideways. */
+    flex-wrap: nowrap;
     align-items: stretch;
   }
 
@@ -303,6 +308,14 @@
   /* JT's entry keeps its full outline. */
   .play-main .option.is-jt {
     border: 3px solid var(--line);
+  }
+
+  /* The list is a flex column with a capped height, which would otherwise squash every row
+     to its min-height and spill long, wrapped titles over their neighbours. Rows keep their
+     height and the list scrolls instead. */
+  .play-main .options > *,
+  .play-main .opt-group > * {
+    flex-shrink: 0;
   }
 
   /* Keep each group's heading above its entries. */

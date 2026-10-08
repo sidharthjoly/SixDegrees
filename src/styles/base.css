@@ -263,6 +263,11 @@ input[type='search']::placeholder {
   color: var(--card-muted);
 }
 
+/* A placeholder too long for a narrow box ends in "…" instead of being cut mid-word. */
+input {
+  text-overflow: ellipsis;
+}
+
 /* ------------------------------------------------------------ cards */
 
 .card {

@@ -142,6 +142,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Nine columns on a small phone are narrower than "28.9K" at 13px; neighbouring labels
+   would run together ("5.1K485"). */
+@media (max-width: 380px) {
+  .cap {
+    font-size: 11px;
+  }
+}
+
 .bar-fill {
   width: min(24px, 70%);
   min-height: 2px;

@@ -187,7 +187,7 @@ function startCard(): HTMLElement {
   const input = h('input', {
     type: 'search',
     id: 'start-search',
-    placeholder: 'Any name, e.g. Meryl Streep',
+    placeholder: 'Any name, e.g. Pelé',
     autocomplete: 'off',
     spellcheck: 'false',
     'aria-controls': 'search-results',
