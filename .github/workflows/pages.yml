@@ -58,7 +58,11 @@ jobs:
       - name: Build the film graph from Wikidata
         run: npm run data
 
+      # Also draws a link-preview image and page for each daily (scripts/previews.ts), whose
+      # tags need the site's absolute address.
       - run: npm run build
+        env:
+          SITE_URL: https://sixdegrees.sidharthjoly.com/
 
       - uses: actions/configure-pages@v6
 

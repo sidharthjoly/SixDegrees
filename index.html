@@ -8,6 +8,23 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <meta name="theme-color" content="#b9b4ff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#1b1745" media="(prefers-color-scheme: dark)" />
+    <!--
+      Link previews. After the build, scripts/previews.ts fills in the SITE_URL placeholders
+      with the absolute address (crawlers need absolute URLs) and draws og/home.png. vite-ignore stops Vite from
+      treating the image URLs as files to bundle. Each daily gets its own tags in d/<date>/.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Six Degrees of Justin Timberlake" />
+    <meta property="og:title" content="Six Degrees of Justin Timberlake" />
+    <meta property="og:description" content="A daily film trivia game: link any actor, athlete or filmmaker to Justin Timberlake through the films they share." />
+    <meta property="og:url" content="%SITE_URL%" />
+    <meta property="og:image" content="%SITE_URL%og/home.png" vite-ignore />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="A pink starburst sticker on a periwinkle dot grid: Six Degrees of Justin Timberlake, a new star every midnight." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="%SITE_URL%og/home.png" vite-ignore />
   </head>
   <body>
     <div id="ticker"></div>

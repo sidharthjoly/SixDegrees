@@ -32,7 +32,7 @@ async function route(): Promise<void> {
       case 'daily': {
         const today = dayKey(new Date());
         const day = r.day ?? today;
-        if (!isPlayableDay(day, today)) return renderMessage('No daily that day', 'Dailies start on 8 October 2026, and future ones stay secret until their day.');
+        if (!isPlayableDay(day, today)) return renderMessage('No daily that day', 'Dailies start on 8 October 2026, and each one opens on its day.');
         const { daily } = await loadMeta();
         return await startGame({ qid: dailyPick(daily, day), day, mode: r.mode, vs: r.vs }, gen);
       }

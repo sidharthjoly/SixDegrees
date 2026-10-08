@@ -6,12 +6,13 @@
   "scripts": {
     "data": "python3 scripts/fetch_wikidata.py && python3 scripts/build_graph.py",
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && tsc -p scripts && vite build && node scripts/previews.ts",
     "preview": "vite preview",
-    "typecheck": "tsc",
+    "typecheck": "tsc && tsc -p scripts",
     "test": "vitest run"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^1.0.10",
     "@types/node": "^26.6.4",
     "typescript": "^7.0.2",
     "vite": "^8.3.3",

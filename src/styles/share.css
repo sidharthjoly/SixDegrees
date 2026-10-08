@@ -1,1 +1,165 @@
-/* Share image and challenge comparison. */
+/* Share sheet: the share image's preview, the "Show my path" switch and the share buttons. */
+
+.share-dialog {
+  width: min(560px, calc(100vw - 24px));
+  max-width: none;
+  max-height: calc(100dvh - 24px);
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--card);
+  color: var(--card-ink);
+  border: 3px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 6px 6px 0 var(--shadow);
+}
+
+.share-dialog::backdrop {
+  background: rgb(17 17 17 / 0.6);
+}
+
+/* The padding lives here, not on the dialog, so a click on the dialog itself means the backdrop. */
+.share-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 20px 20px;
+}
+
+.share-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.share-head h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 400;
+  text-transform: uppercase;
+}
+
+.share-close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 3px solid var(--line);
+  border-radius: 999px;
+  background: var(--field);
+  color: var(--card-ink);
+  font: 700 26px/1 var(--text);
+  cursor: pointer;
+}
+
+/* Tall images (with the path) scroll inside the frame rather than stretching the sheet. */
+.share-preview {
+  max-height: min(56dvh, 520px);
+  overflow: auto;
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg);
+}
+
+.share-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.share-preview[aria-busy='true'] .share-img {
+  opacity: 0.35;
+}
+
+.share-toggle {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.share-toggle-label {
+  display: block;
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.share-toggle-sub {
+  display: block;
+  font-size: 14px;
+  color: var(--card-muted);
+}
+
+/* A switch drawn on the native checkbox, so it keeps the checkbox's keyboard and screen-reader behaviour. */
+.share-switch {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 56px;
+  height: 32px;
+  margin: 0;
+  border: 3px solid var(--line);
+  border-radius: 999px;
+  background: var(--field);
+  cursor: pointer;
+}
+
+.share-switch::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--line);
+  transition: transform 0.15s ease;
+}
+
+.share-switch:checked {
+  background: var(--pink);
+}
+
+.share-switch:checked::before {
+  transform: translateX(24px);
+  background: #111111;
+}
+
+.share-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* The main action spans the row on a phone; the others share the next one. */
+.share-buttons .btn {
+  flex: 1 1 auto;
+}
+
+.share-buttons .btn.primary {
+  flex-basis: 100%;
+}
+
+@media (min-width: 520px) {
+  .share-buttons .btn.primary {
+    flex-basis: auto;
+  }
+}
+
+.share-status {
+  min-height: 1.5em;
+  margin: 0;
+  font-weight: 700;
+}
+
+.share-status:empty {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .share-switch::before {
+    transition: none;
+  }
+}
