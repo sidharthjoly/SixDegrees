@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { drawPreviewCard, drawResultCard, ellipsize, fitText, pathRows, resultCardSize, scoreLine, squareGrid, wrap, type CardStep, type Ctx, type Measure, type ResultCard } from './card';
+import { STORY_PATH_ROWS, drawPreviewCard, drawResultCard, drawStory, ellipsize, fitText, pathRows, resultCardSize, scoreLine, squareGrid, storyPlan, wrap, type CardStep, type Ctx, type Measure, type ResultCard, type StoryCard } from './card';
 
 // Every character is 0.6em wide: close enough to Chakra Petch to exercise the fitting.
 const measure: Measure = (s, size) => [...s].length * size * 0.6;
@@ -21,6 +21,8 @@ function recorder(): Ctx & { texts: string[] } {
     restore() {},
     translate() {},
     rotate() {},
+    scale() {},
+    globalAlpha: 1,
     beginPath() {},
     closePath() {},
     moveTo() {},
@@ -165,6 +167,72 @@ describe('drawResultCard', () => {
     expect(all).toContain('Another Costar');
     expect(all).toContain('#1');
     expect(resultCardSize(withPath).height).toBeGreaterThan(1080);
+  });
+});
+
+describe('story card', () => {
+  const card: StoryCard = {
+    label: 'Daily #12',
+    hard: false,
+    start: 'Pelé',
+    par: 2,
+    moves: [
+      { grade: 'closer', hinted: false },
+      { grade: 'closer', hinted: true },
+    ],
+    gaveUp: false,
+    site: 'example.com',
+    standing: 'Beat 72% of players',
+  };
+  const path: CardStep[] = [
+    { film: 'Secret Film', year: 2001, person: 'Hidden Costar', grade: 'closer' },
+    { film: 'In Time', year: 2011, person: 'Justin Timberlake', grade: 'closer', hinted: true },
+  ];
+  const longPath: CardStep[] = Array.from({ length: 14 }, (_, i) => ({ film: `Film ${i + 1}`, year: 2000 + i, person: i === 13 ? 'Justin Timberlake' : `Person ${i + 1}`, grade: 'same' as const }));
+
+  it('is spoiler-free by default, with the standing and a call to play', () => {
+    const ctx = recorder();
+    drawStory(ctx, card);
+    const all = ctx.texts.join('\n');
+    expect(all).toContain('2 FILMS · PAR 2');
+    expect(all).toContain('BEAT 72% OF PLAYERS');
+    expect(all).toContain('CAN YOU BEAT IT?');
+    expect(all).not.toContain('Secret Film');
+  });
+
+  it('dares the next player to finish when this one gave up', () => {
+    const ctx = recorder();
+    drawStory(ctx, { ...card, gaveUp: true, standing: undefined });
+    expect(ctx.texts).toContain('CAN YOU FINISH IT?');
+  });
+
+  it('folds a long countdown to fit', () => {
+    const ctx = recorder();
+    drawStory(ctx, { ...card, path: longPath });
+    const all = ctx.texts.join('\n');
+    expect(all).toContain('Film 1');
+    expect(all).toContain('Film 14');
+    expect(all).toContain('6 more films');
+    expect(all).not.toContain('Film 9 ');
+    expect(storyPlan({ ...card, path: longPath }).rows).toHaveLength(STORY_PATH_ROWS + 1);
+  });
+
+  it('plays its parts in order, ending on a hold', () => {
+    const plan = storyPlan({ ...card, path });
+    const times = [plan.sticker, ...plan.rows, plan.panel, ...plan.squares, plan.standing, plan.cta];
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+    expect(plan.end).toBeGreaterThan(plan.cta + 1);
+    expect(plan.end).toBeLessThan(10);
+  });
+
+  it('draws nothing of a part before its time', () => {
+    const early = recorder();
+    drawStory(early, { ...card, path }, 0);
+    expect(early.texts.join('\n')).not.toContain('Secret Film');
+    expect(early.texts.join('\n')).not.toContain('CAN YOU BEAT IT?');
+    const late = recorder();
+    drawStory(late, { ...card, path }, storyPlan({ ...card, path }).end);
+    expect(late.texts.join('\n')).toContain('Secret Film');
   });
 });
 

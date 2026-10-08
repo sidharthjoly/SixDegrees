@@ -1,4 +1,5 @@
-/* Share sheet: the share image's preview, the "Show my path" switch and the share buttons. */
+/* Share sheet: square or story, the image's preview, the "Show my path" switch, the share
+   buttons and the video. */
 
 .share-dialog {
   width: min(560px, calc(100vw - 24px));
@@ -66,6 +67,74 @@
   display: block;
   width: 100%;
   height: auto;
+}
+
+/* A story (or the video) is shown whole, at a height that leaves room for the buttons. */
+.share-preview.tall {
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.share-preview.tall .share-img {
+  width: auto;
+  max-width: 100%;
+  height: min(48dvh, 460px);
+}
+
+.share-img[hidden] {
+  display: none;
+}
+
+.share-formats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.share-format {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 52px;
+  padding: 8px 14px;
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  background: var(--field);
+  color: var(--card-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.share-format[aria-pressed='true'] {
+  background: var(--lime);
+  color: #111111;
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+
+.share-format-label {
+  font-family: var(--display);
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.share-format-sub {
+  font-size: 13px;
+  color: var(--card-muted);
+}
+
+.share-format[aria-pressed='true'] .share-format-sub {
+  color: #111111;
+}
+
+.video-btn {
+  width: 100%;
+}
+
+.video-btn[hidden] {
+  display: none;
 }
 
 .share-preview[aria-busy='true'] .share-img {

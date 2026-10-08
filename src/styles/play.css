@@ -300,6 +300,11 @@
     border-top: 0;
   }
 
+  /* JT's entry keeps its full outline. */
+  .play-main .option.is-jt {
+    border: 3px solid var(--line);
+  }
+
   /* Keep each group's heading above its entries. */
   .play-main .opt-group {
     display: flex;

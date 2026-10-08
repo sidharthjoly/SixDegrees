@@ -28,6 +28,8 @@ export interface ResultContext {
   text: string;
   /** The friend's challenge code this game was started from, if any. */
   vs: string | null;
+  /** How the player stood against everyone that day ("Beat 72% of players"), once known. */
+  standing?: () => string | null;
 }
 
 export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): Promise<void> {

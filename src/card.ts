@@ -1,6 +1,7 @@
 /*
- * Share cards, drawn with the Canvas 2D API: the result image offered on the result screen,
- * and the link-preview image the build draws for each daily (scripts/previews.ts).
+ * Share cards, drawn with the Canvas 2D API: the result images offered on the result screen
+ * (square, and a 9:16 story that also animates into the share video), and the link-preview
+ * image the build draws for each daily (scripts/previews.ts).
  *
  * The same code runs in the browser and in Node (@napi-rs/canvas), so this file keeps to two
  * rules. It has only type imports, because Node loads it by stripping types and can't resolve
@@ -23,6 +24,8 @@ export interface Ctx {
   restore(): void;
   translate(x: number, y: number): void;
   rotate(angle: number): void;
+  scale(x: number, y: number): void;
+  globalAlpha: number;
   beginPath(): void;
   closePath(): void;
   moveTo(x: number, y: number): void;
@@ -572,30 +575,22 @@ function drawPath(ctx: Ctx, c: ResultCard, top: number): void {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillText(c.gaveUp ? 'MY COUNTDOWN, FINISHED FOR ME' : 'MY COUNTDOWN', x, top + PATH_TOP / 2);
+  countdownRows(c).forEach((r, i) => trackRow(ctx, x, top + PATH_TOP + i * (ROW_H + ROW_GAP), w, r));
+}
 
+/** The countdown's cards: START, then the films (at most `max` rows of them) down to #1. */
+function countdownRows(c: ResultCard, max = MAX_PATH_ROWS): TrackRow[] {
   const steps = c.path ?? [];
-  const rows = pathRows(steps);
-  let y = top + PATH_TOP;
-  trackRow(ctx, x, y, w, { num: 'START', title: c.start, start: true });
-  rows.forEach((r, i) => {
-    y += ROW_H + ROW_GAP;
-    if ('more' in r) {
-      trackRow(ctx, x, y, w, { num: '…', title: `${r.more} more ${r.more === 1 ? 'film' : 'films'}`, dashed: true });
-      return;
-    }
-    // Numbered by place in the full path, so #1 is always the film with JT.
-    const place = i === rows.length - 1 ? 1 : steps.length - i;
-    trackRow(ctx, x, y, w, {
-      num: `#${place}`,
-      title: r.film,
-      year: r.year,
-      sub: r.person,
-      grade: r.grade,
-      hinted: r.hinted,
-      dashed: r.revealed,
-      numberOne: place === 1,
-    });
-  });
+  const rows = pathRows(steps, max);
+  return [
+    { num: 'START', title: c.start, start: true },
+    ...rows.map((r, i): TrackRow => {
+      if ('more' in r) return { num: '…', title: `${r.more} more ${r.more === 1 ? 'film' : 'films'}`, dashed: true };
+      // Numbered by place in the full path, so #1 is always the film with JT.
+      const place = i === rows.length - 1 ? 1 : steps.length - i;
+      return { num: `#${place}`, title: r.film, year: r.year, sub: r.person, grade: r.grade, hinted: r.hinted, dashed: r.revealed, numberOne: place === 1 };
+    }),
+  ];
 }
 
 interface TrackRow {
@@ -712,6 +707,216 @@ function answerChip(ctx: Ctx, x: number, y: number, w: number): void {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('ANSWER', x + w / 2, y + 25);
+}
+
+// ------------------------------------------------------------------ story card and video
+
+/*
+ * The 9:16 card for Instagram, TikTok and Snapchat stories, which is also every frame of
+ * the share video: drawStory(ctx, card, at) draws the card as it stands `at` seconds into
+ * the video, and the still image is the finished card. Story apps cover roughly the top and
+ * bottom 250px with their own controls, so only decoration sits there.
+ */
+
+export const STORY_WIDTH = 1080;
+export const STORY_HEIGHT = 1920;
+/** Film rows on a story with the path; longer paths fold their middle into a "more" row. */
+export const STORY_PATH_ROWS = 9;
+
+export interface StoryCard extends ResultCard {
+  /** How the player did against everyone else that day, e.g. "Beat 72% of players". */
+  standing?: string;
+}
+
+/** When each part of the story arrives in the video, in seconds from the start. */
+export interface StoryPlan {
+  sticker: number;
+  /** The arrow and JT's name under the sticker (spoiler-free story only). */
+  goal: number;
+  /** One per countdown card, START first (story with the path only). */
+  rows: number[];
+  panel: number;
+  squares: number[];
+  standing: number;
+  cta: number;
+  /** The video's length: everything in, then a hold on the finished card. */
+  end: number;
+}
+
+export function storyPlan(c: StoryCard): StoryPlan {
+  let t = 0.15;
+  const sticker = t;
+  t += 0.6;
+  const goal = t;
+  let rows: number[] = [];
+  if (c.path) {
+    const n = countdownRows(c, STORY_PATH_ROWS).length;
+    // Long countdowns deal their cards faster, so the video stays about the same length.
+    const step = Math.min(0.4, 2.4 / n);
+    rows = Array.from({ length: n }, (_, i) => t + i * step);
+    t += n * step + 0.2;
+  } else {
+    t += 0.75;
+  }
+  const panel = t;
+  t += 0.35;
+  const step = Math.min(0.28, 1.8 / Math.max(1, c.moves.length));
+  const squares = c.moves.map((_, i) => t + i * step);
+  t += c.moves.length * step + 0.3;
+  const standing = t;
+  if (c.standing) t += 0.5;
+  const cta = t;
+  t += 0.4;
+  return { sticker, goal, rows, panel, squares, standing, cta, end: t + 1.8 };
+}
+
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+/** 0 → 1 over `dur` seconds from `start`. A still (at = Infinity) is always 1. */
+const phase = (at: number, start: number, dur: number) => clamp01((at - start) / dur);
+const easeOut = (p: number) => 1 - (1 - p) ** 3;
+/** Overshoots a little before settling, like a sticker slapped on. */
+const easeBack = (p: number) => 1 + 2.70158 * (p - 1) ** 3 + 1.70158 * (p - 1) ** 2;
+
+/** Run `draw` scaled by `s` about (cx, cy), at opacity `alpha`; skipped while invisible. */
+function transformed(ctx: Ctx, o: { cx: number; cy: number; s?: number; dx?: number; dy?: number; turn?: number; alpha?: number }, draw: () => void): void {
+  const s = o.s ?? 1;
+  const alpha = o.alpha ?? 1;
+  if (s <= 0.001 || alpha <= 0.001) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(o.cx + (o.dx ?? 0), o.cy + (o.dy ?? 0));
+  if (o.turn) ctx.rotate(o.turn);
+  ctx.scale(s, s);
+  ctx.translate(-o.cx, -o.cy);
+  draw();
+  ctx.restore();
+}
+
+/** outlinedText, centred on cx. */
+function outlinedCentred(ctx: Ctx, s: string, cx: number, y: number, size: number): void {
+  ctx.font = display(size);
+  outlinedText(ctx, s, cx - (ctx.measureText(s).width + size * 0.12) / 2, y, size);
+}
+
+export function drawStory(ctx: Ctx, c: StoryCard, at = Infinity): void {
+  const W = STORY_WIDTH;
+  const H = STORY_HEIGHT;
+  const plan = storyPlan(c);
+  const withPath = !!c.path;
+  background(ctx, W, H);
+  band(ctx, 96, W, 80, 'SIX DEGREES OF JUSTIN TIMBERLAKE', 26, true);
+
+  // The sticker lands with a spin and a little overshoot.
+  const size = withPath ? 470 : 640;
+  const sy = withPath ? 470 : 600;
+  const pop = phase(at, plan.sticker, 0.6);
+  transformed(ctx, { cx: W / 2, cy: sy, s: easeBack(pop), turn: (1 - easeOut(pop)) * -0.5 }, () => {
+    sticker(ctx, W / 2, sy, size, c.label, c.start, `Par ${c.par}`);
+    if (c.hard) {
+      ctx.save();
+      ctx.translate(W / 2 + size * 0.12, sy + size * 0.36);
+      ctx.rotate((6 * Math.PI) / 180);
+      pill(ctx, 0, 0, 'Hard mode', 26, INK, LIME);
+      ctx.restore();
+    }
+  });
+
+  if (withPath) storyCountdown(ctx, c, plan, at);
+  else {
+    // ↓ Justin Timberlake: where the countdown ends up.
+    const p = easeOut(phase(at, plan.goal, 0.5));
+    transformed(ctx, { cx: W / 2, cy: 1050, dy: (1 - p) * -40, alpha: p }, () => {
+      ctx.save();
+      ctx.translate(W / 2, 925);
+      ctx.rotate(Math.PI / 2);
+      arrow(ctx, 0, 0, 105, 40);
+      ctx.restore();
+      outlinedCentred(ctx, 'JUSTIN', W / 2, 1096, 66);
+      outlinedCentred(ctx, 'TIMBERLAKE', W / 2, 1172, 66);
+    });
+  }
+
+  storyScore(ctx, c, plan, at, withPath);
+
+  const cta = easeOut(phase(at, plan.cta, 0.4));
+  transformed(ctx, { cx: W / 2, cy: 1676, dy: (1 - cta) * 30, alpha: cta }, () => {
+    ctx.font = display(40);
+    ctx.fillStyle = INK;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(c.gaveUp ? 'CAN YOU FINISH IT?' : 'CAN YOU BEAT IT?', W / 2, 1676);
+  });
+  band(ctx, 1736, W, 80, c.site.toUpperCase(), 26, false);
+}
+
+/** The countdown cards, dealt in from the right, shrunk to fit if the path is long. */
+function storyCountdown(ctx: Ctx, c: StoryCard, plan: StoryPlan, at: number): void {
+  const top = 760;
+  // Down to just above the standing stamp on the score panel.
+  const room = 1404 - top;
+  const rows = countdownRows(c, STORY_PATH_ROWS);
+  const natural = rows.length * (ROW_H + ROW_GAP) - ROW_GAP;
+  const k = Math.min(1, room / natural);
+  const w = STORY_WIDTH - 120;
+  ctx.save();
+  ctx.translate(STORY_WIDTH / 2 - (w * k) / 2, top + (room - natural * k) / 2);
+  ctx.scale(k, k);
+  rows.forEach((r, i) => {
+    const p = easeOut(phase(at, plan.rows[i], 0.4));
+    const y = i * (ROW_H + ROW_GAP);
+    transformed(ctx, { cx: 0, cy: y, dx: (1 - p) * 800, alpha: p }, () => trackRow(ctx, 0, y, w, r));
+  });
+  ctx.restore();
+}
+
+/** The score panel: result line, grade squares popping in one by one, legend, standing. */
+function storyScore(ctx: Ctx, c: StoryCard, plan: StoryPlan, at: number, compact: boolean): void {
+  const W = STORY_WIDTH;
+  const px = 60;
+  const pw = W - 120;
+  const py = compact ? 1470 : 1290;
+  const ph = compact ? 160 : 330;
+  const slide = easeOut(phase(at, plan.panel, 0.35));
+  transformed(ctx, { cx: W / 2, cy: py, dy: (1 - slide) * 80, alpha: slide }, () => {
+    panel(ctx, px, py, pw, ph, { fill: c.gaveUp ? WHITE : SOFT });
+    const score = fitText(scoreLine(c).toUpperCase(), measureWith(ctx, display), { maxWidth: pw - 80, maxLines: 1, max: compact ? 34 : 42, min: 22 });
+    ctx.font = display(score.size);
+    ctx.fillStyle = INK;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(score.lines[0], W / 2, py + (compact ? 40 : 54));
+  });
+
+  const gap = compact ? 10 : 14;
+  const areaH = compact ? 72 : 150;
+  const areaTop = py + (compact ? 72 : 96);
+  const grid = squareGrid(c.moves.length, pw - 80, areaH, gap, compact ? 64 : 110);
+  const gridTop = areaTop + (areaH - (grid.rows * grid.size + (grid.rows - 1) * gap)) / 2;
+  c.moves.forEach((m, i) => {
+    const row = Math.floor(i / grid.perRow);
+    const inRow = Math.min(grid.perRow, c.moves.length - row * grid.perRow);
+    const x = W / 2 - (inRow * grid.size + (inRow - 1) * gap) / 2 + (i % grid.perRow) * (grid.size + gap);
+    const y = gridTop + row * (grid.size + gap);
+    const p = phase(at, plan.squares[i], 0.3);
+    transformed(ctx, { cx: x + grid.size / 2, cy: y + grid.size / 2, s: easeBack(p) }, () => gradeSquare(ctx, x, y, grid.size, m));
+  });
+
+  if (!compact) {
+    const last = plan.squares.at(-1) ?? plan.panel;
+    transformed(ctx, { cx: W / 2, cy: py + ph - 40, alpha: phase(at, last + 0.15, 0.3) }, () => legend(ctx, W / 2, py + ph - 40, 18, c.moves.some((m) => m.hinted)));
+  }
+
+  if (c.standing) {
+    // Stamped on the panel's top edge, clear of the score line.
+    const label = c.standing.toUpperCase();
+    const size = 24;
+    ctx.font = display(size);
+    const w = ctx.measureText(label).width + size * 1.6;
+    const p = phase(at, plan.standing, 0.35);
+    const sx = px + pw - w + 16;
+    const sy = py - 56;
+    transformed(ctx, { cx: sx + w / 2, cy: sy + size * 1.1, s: 1.6 - 0.6 * easeOut(p), turn: (-4 * Math.PI) / 180, alpha: p }, () => pill(ctx, sx, sy, label, size, LIME, INK));
+  }
 }
 
 // ------------------------------------------------------------------ link preview card
