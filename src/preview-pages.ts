@@ -149,6 +149,10 @@ export const DAILY_PATH_RE = /^(.*?\/)d\/(\d{4}-\d{2}-\d{2})(\/hard)?\/?$/;
  * GitHub Pages serves 404.html for any missing path. A daily link newer than the last
  * build (pages run 45 days ahead, but scheduled builds can lapse) still reaches the game.
  * The site root is whatever comes before /d/, so this works on a /repo/ path too.
+ *
+ * The root goes after this site's origin, never on its own: a path like //evil.example/d/…
+ * would otherwise make it a link to another site, so anyone could send people from this
+ * address to theirs.
  */
 export function notFoundPage(): string {
   return `<!doctype html>
@@ -159,7 +163,7 @@ export function notFoundPage(): string {
 <title>Six Degrees of Justin Timberlake</title>
 <script>
 var m = location.pathname.match(${DAILY_PATH_RE});
-if (m) location.replace(m[1] + "#/daily/" + m[2] + (m[3] ? "/hard" : "") + location.search);
+if (m) location.replace(location.origin + m[1] + "#/daily/" + m[2] + (m[3] ? "/hard" : "") + location.search);
 </script>
 <style>${PAGE_CSS}</style>
 </head>

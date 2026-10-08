@@ -141,4 +141,27 @@ describe('notFoundPage', () => {
     expect('/d/2027-03-01/extra/'.match(DAILY_PATH_RE)).toBeNull();
     expect('/nothing-here'.match(DAILY_PATH_RE)).toBeNull();
   });
+
+  // Runs the page's own script against a stand-in for `location`, returning where it went.
+  const redirect = (pathname: string, search = '') => {
+    const script = /<script>([\s\S]*?)<\/script>/.exec(notFoundPage())![1];
+    const went: string[] = [];
+    const location = { origin: 'https://sixdegrees.example', pathname, search, replace: (url: string) => went.push(url) };
+    new Function('location', script)(location);
+    return went;
+  };
+
+  it('forwards to the game on this site', () => {
+    expect(redirect('/d/2027-03-01/', '?vs=abc')).toEqual(['https://sixdegrees.example/#/daily/2027-03-01?vs=abc']);
+    expect(redirect('/repo/d/2027-03-01/hard/')).toEqual(['https://sixdegrees.example/repo/#/daily/2027-03-01/hard']);
+    expect(redirect('/nothing-here')).toEqual([]);
+  });
+
+  it('never forwards to another site', () => {
+    for (const path of ['//evil.example/d/2027-03-01/', '/x//evil.example/d/2027-03-01/hard/', '///evil.example/d/2027-03-01']) {
+      const went = redirect(path);
+      expect(went).toHaveLength(1);
+      expect(new URL(went[0]).origin).toBe('https://sixdegrees.example');
+    }
+  });
 });

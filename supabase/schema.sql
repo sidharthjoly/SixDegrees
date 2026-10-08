@@ -10,6 +10,11 @@
 -- There are no accounts. A player is a random id kept in their browser, which only ever goes
 -- in, never out: no function returns anyone's id, so nobody can play or leave a group as
 -- someone else. Results carry no names; a name is only stored when a player joins a group.
+--
+-- Anyone can call these functions in a loop with made-up ids, so nothing can be limited per
+-- player. Instead every write counts toward a daily cap for its kind, and writes stop once
+-- these tables reach their storage budget (see sixdegrees.take). A free project that runs out
+-- of space turns read-only for every app in it, not just this one.
 
 create schema if not exists sixdegrees;
 revoke all on schema sixdegrees from public;
@@ -28,13 +33,19 @@ create table if not exists sixdegrees.results (
   late boolean not null default false,
   first_film integer check (first_film > 0),
   -- The route as film-person pairs in base36, like a challenge link; finished games only.
-  route text check (route ~ '^[0-9a-z]+-[0-9a-z]+(_[0-9a-z]+-[0-9a-z]+)*$' and length(route) <= 1200),
+  route text,
   played_at timestamptz not null default now(),
   primary key (client, day, mode),
   -- Nobody finishes in fewer films than par.
   check (gave_up or films >= par)
 );
 create index if not exists results_day_idx on sixdegrees.results (day, mode);
+
+-- A pair is at most 13 characters, so 600 is a route of 40-odd films; anything longer is kept
+-- without its route (sixdegrees_submit). Replaced rather than created so a rerun updates it.
+alter table sixdegrees.results drop constraint if exists results_route_check;
+alter table sixdegrees.results add constraint results_route_check
+  check (length(route) <= 600 and route ~ '^[0-9a-z]+-[0-9a-z]+(_[0-9a-z]+-[0-9a-z]+)*$');
 
 create table if not exists sixdegrees.groups (
   code text primary key,
@@ -52,22 +63,58 @@ create table if not exists sixdegrees.members (
 );
 create index if not exists members_client_idx on sixdegrees.members (client);
 
+-- Writes so far each UTC day, by kind (see sixdegrees.take).
+create table if not exists sixdegrees.quota (
+  day date not null,
+  kind text not null,
+  n int not null,
+  primary key (day, kind)
+);
+
 -- No policies: nothing reaches these tables except through the functions below.
 alter table sixdegrees.results enable row level security;
 alter table sixdegrees.groups enable row level security;
 alter table sixdegrees.members enable row level security;
+alter table sixdegrees.quota enable row level security;
 
 -- The first daily. Nothing before it is a real result.
 create or replace function sixdegrees.first_day() returns date
 language sql immutable set search_path = '' as $$ select date '2026-10-08' $$;
 
--- A display name: no control characters, spaces collapsed, at most `max` characters.
--- Raises if nothing is left.
+-- Counts one write of `p_kind`, and raises with `p_busy` if that's more than `p_cap` today, or
+-- if this schema's tables have outgrown their 200 MB budget (the free plan's database is
+-- 500 MB, shared). A raise undoes the count along with the write. At the caps, a day of junk
+-- adds about 40 MB.
+create or replace function sixdegrees.take(p_kind text, p_cap int, p_busy text) returns void
+language plpgsql set search_path = '' as $$
+declare
+  used int;
+begin
+  if pg_total_relation_size('sixdegrees.results') + pg_total_relation_size('sixdegrees.groups')
+     + pg_total_relation_size('sixdegrees.members') + pg_total_relation_size('sixdegrees.quota') > 200 * 1024 * 1024 then
+    raise exception 'The game’s server is full' using errcode = '53100';
+  end if;
+  insert into sixdegrees.quota as q (day, kind, n) values ((now() at time zone 'utc')::date, p_kind, 1)
+  on conflict (day, kind) do update set n = q.n + 1
+  returning n into used;
+  if used > p_cap then
+    raise exception '%', p_busy using errcode = '54000';
+  end if;
+end $$;
+
+-- A display name: no control or invisible characters (zero-width spaces, the bidi overrides
+-- that make text read backwards), at most two combining accents in a row, spaces collapsed,
+-- at most `max` characters. The game cleans names before sending them, but anyone can call
+-- these functions directly. Raises if nothing is left.
 create or replace function sixdegrees.clean_name(raw text, max int) returns text
 language plpgsql immutable set search_path = '' as $$
 declare
-  name text := left(btrim(regexp_replace(regexp_replace(coalesce(raw, ''), '[[:cntrl:]]', '', 'g'), '\s+', ' ', 'g')), max);
+  marks constant text := E'\u0300-\u036F\u1AB0-\u1AFF\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F';
+  name text := left(coalesce(raw, ''), 200);
 begin
+  name := regexp_replace(name, E'[[:cntrl:]\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u2028-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF9-\uFFFB]', '', 'g');
+  name := regexp_replace(name, '([' || marks || ']{2})[' || marks || ']+', '\1', 'g');
+  name := btrim(left(btrim(regexp_replace(name, '\s+', ' ', 'g')), max));
   if name = '' then
     raise exception 'A name is needed' using errcode = '22023';
   end if;
@@ -100,10 +147,14 @@ begin
     p_client, p_day, p_mode, p_films, coalesce(p_hints, 0), p_par, p_gave_up,
     coalesce(p_late, false) or p_day < today - 1,
     p_first_film,
-    case when p_gave_up then null else nullif(p_route, '') end
+    case when p_gave_up or length(p_route) > 600 then null else nullif(p_route, '') end
   )
   -- A daily counts once per player: their first go.
   on conflict (client, day, mode) do nothing;
+  -- Only a new row counts; resending one that's already in costs nothing.
+  if found then
+    perform sixdegrees.take('results', 50000, 'Too many results today. Try again tomorrow.');
+  end if;
 end $$;
 
 -- The day's global stats, and where `p_client` stands among them. Only results played on the
@@ -154,6 +205,7 @@ begin
   if (select count(*) from sixdegrees.groups where created_by = p_client and created_at > now() - interval '1 day') >= 10 then
     raise exception 'That''s a lot of new groups. Try again tomorrow.' using errcode = '54000';
   end if;
+  perform sixdegrees.take('groups', 2000, 'Lots of new groups today. Try again tomorrow.');
   loop
     -- 10 characters from two random UUIDs' bytes: about 49 bits, too many to guess.
     bytes := uuid_send(gen_random_uuid()) || uuid_send(gen_random_uuid());
@@ -184,6 +236,7 @@ begin
      and (select count(*) from sixdegrees.members where code = g.code) >= 100 then
     raise exception 'That group is full' using errcode = '54000';
   end if;
+  perform sixdegrees.take('joins', 10000, 'Lots of joining today. Try again tomorrow.');
   insert into sixdegrees.members (code, client, name) values (g.code, p_client, player_name)
   on conflict (code, client) do update set name = excluded.name;
   return jsonb_build_object('code', g.code, 'name', g.name);
