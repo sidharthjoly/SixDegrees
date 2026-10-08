@@ -10,7 +10,17 @@ export const tickerSlot = document.querySelector<HTMLElement>('#ticker')!;
 /** Bumped on every navigation so late fetches don't render over a newer view. */
 let generation = 0;
 
+/** Teardown for whatever the current screen attached outside #app (listeners, overlays). */
+let leaving: (() => void)[] = [];
+
+/** Run `cleanup` when the player navigates away from the current screen. */
+export function onLeave(cleanup: () => void): void {
+  leaving.push(cleanup);
+}
+
 export function beginNavigation(): number {
+  for (const fn of leaving) fn();
+  leaving = [];
   tickerSlot.replaceChildren();
   return ++generation;
 }

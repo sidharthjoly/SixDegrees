@@ -5,6 +5,7 @@ import { loadDaily, type DailyRecord } from '../storage';
 import type { Meta, Person, Qid } from '../types';
 import { h, yearOf, type Child } from './dom';
 import { puzzleUrl, shareButton } from './share';
+import { startHomeFx } from './homefx';
 import { app, go, isCurrent, randomStart, renderLoading, tickerSlot } from './shell';
 import { statsBadge } from './stats';
 
@@ -32,6 +33,9 @@ function ticker(meta: Meta): HTMLElement {
   return h('div', { class: 'ticker' }, h('div', { class: 'ticker-track' }, h('span', null, text), h('span', { 'aria-hidden': 'true' }, text)));
 }
 
+/** The sticker settles onto the page on the first home visit only, not after every game. */
+let introDone = false;
+
 export async function renderHome(gen: number): Promise<void> {
   renderLoading();
   const meta = await loadMeta();
@@ -44,25 +48,26 @@ export async function renderHome(gen: number): Promise<void> {
     return rec?.start === daily.id ? rec : null;
   };
   tickerSlot.replaceChildren(ticker(meta));
-  app.replaceChildren(
+  const home = h(
+    'div',
+    { class: 'home' + (introDone ? '' : ' intro') },
     h(
       'div',
-      { class: 'home' },
+      { class: 'home-main' },
+      h('h1', { class: 'title' }, 'Six Degrees of Justin Timberlake'),
       h(
-        'div',
-        { class: 'home-main' },
-        h('h1', { class: 'title' }, 'Six Degrees of Justin Timberlake'),
-        h(
-          'p',
-          { class: 'lede' },
-          `${meta.people.toLocaleString()} actors, athletes and filmmakers, all linked to JT through ${meta.films.toLocaleString()} films. `,
-          'Pick a film, pick a co-star, and keep going until you land on Justin.',
-        ),
-        dailyCard(day, daily, played('normal'), played('hard')),
-        startCard(),
+        'p',
+        { class: 'lede' },
+        `${meta.people.toLocaleString()} actors, athletes and filmmakers, all linked to JT through ${meta.films.toLocaleString()} films. `,
+        'Pick a film, pick a co-star, and keep going until you land on Justin.',
       ),
-      h('div', { class: 'home-side' }, h('h2', { class: 'section-label' }, 'How to play · Top 3'), howTo(meta), histogram(meta)),
+      dailyCard(day, daily, played('normal'), played('hard')),
+      startCard(),
     ),
+    h('div', { class: 'home-side' }, h('h2', { class: 'section-label' }, 'How to play · Top 3'), howTo(meta), histogram(meta)),
+  );
+  app.replaceChildren(
+    home,
     h(
       'footer',
       { class: 'footer' },
@@ -71,6 +76,8 @@ export async function renderHome(gen: number): Promise<void> {
       h('p', null, 'A fan project. Not affiliated with Justin Timberlake.'),
     ),
   );
+  startHomeFx(home);
+  introDone = true;
 }
 
 function dailyCard(day: string, person: Person, played: DailyRecord | null, playedHard: DailyRecord | null): HTMLElement {
@@ -103,31 +110,37 @@ function dailyCard(day: string, person: Person, played: DailyRecord | null, play
   return h(
     'section',
     { class: 'daily', 'aria-label': `Daily challenge number ${n}` },
+    // The sticker is the biggest thing on the page, so it's also a way into the daily.
     h(
-      'div',
-      { class: 'sticker' },
-      h('span', { class: 'sticker-tag' }, `Daily #${n}`),
-      h('span', { class: 'sticker-name' + size }, person.name),
-      h('span', { class: 'sticker-tag' }, `Par ${person.normal.dist}`),
+      'a',
+      { class: 'sticker-link', href: href({ name: 'daily', day, mode: 'normal', vs: null }), 'aria-label': `Play daily #${n}: ${person.name}, par ${person.normal.dist}` },
+      h(
+        'div',
+        { class: 'sticker' },
+        h('span', { class: 'sticker-tag' }, `Daily #${n}`),
+        h('span', { class: 'sticker-name' + size }, person.name),
+        h('span', { class: 'sticker-tag' }, `Par ${person.normal.dist}`),
+      ),
     ),
     h('div', { class: 'daily-side' }, ...side),
   );
 }
 
 function howTo(meta: Meta): HTMLElement {
-  const step = (num: string, title: string, sub: Child, extra = '') =>
+  // --i staggers the cards as they appear: #3, then #2, then #1, like a countdown.
+  const step = (i: number, num: string, title: string, sub: Child, extra = '') =>
     h(
       'li',
-      { class: 'track' + extra },
+      { class: 'track' + extra, style: `--i:${i}` },
       h('span', { class: 'track-num' }, num),
       h('div', { class: 'track-body' }, h('span', { class: 'track-title' }, title), h('span', { class: 'track-sub' }, sub)),
     );
   return h(
     'ol',
     { class: 'countdown howto' },
-    step('#3', 'Pick a film', 'Any film your star was credited in.'),
-    step('#2', 'Pick a co-star', 'Anyone else in that film’s cast.'),
-    step('#1', 'Land on Justin', 'Each move charts ▲ closer, ● no closer or ▼ further. Match par to hit #1.', ' number-one'),
+    step(0, '#3', 'Pick a film', 'Any film your star was credited in.'),
+    step(1, '#2', 'Pick a co-star', 'Anyone else in that film’s cast.'),
+    step(2, '#1', 'Land on Justin', 'Each move charts ▲ closer, ● no closer or ▼ further. Match par to hit #1.', ' number-one'),
     meta.hardBanned.length > 0 && h('li', { class: 'howto-note' }, `Hard mode bans ${meta.hardBanned.map((f) => f.title).join(', ')}.`),
   );
 }
@@ -215,12 +228,12 @@ function histogram(meta: Meta): HTMLElement {
   const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
   const tip = h('div', { class: 'tip', role: 'status' });
 
-  const cols = rows.map(([d, n]) => {
+  const cols = rows.map(([d, n], i) => {
     const label = `${plural(d, 'film')} from JT: ${n.toLocaleString()} people (${((100 * n) / total).toFixed(n / total < 0.001 ? 2 : 1)}%)`;
     const showTip = () => (tip.textContent = label);
     return h(
       'div',
-      { class: 'col', tabindex: '0', 'aria-label': label, onmouseenter: showTip, onfocus: showTip, onmouseleave: () => (tip.textContent = ''), onblur: () => (tip.textContent = '') },
+      { class: 'col', style: `--i:${i}`, tabindex: '0', 'aria-label': label, onmouseenter: showTip, onfocus: showTip, onmouseleave: () => (tip.textContent = ''), onblur: () => (tip.textContent = '') },
       h('span', { class: 'cap' }, compact.format(n)),
       h('span', { class: 'bar-fill', style: `height:${Math.max((100 * n) / max, 0.8)}%` }),
       h('span', { class: 'tick' }, d),
