@@ -10,6 +10,7 @@ import { Picker, type PickGroup, type PickOption } from './picker';
 import { finish } from './result';
 import { app, currentGeneration, isCurrent, renderError, renderLoading, renderMessage, topBar } from './shell';
 import { tracks } from './tracks';
+import { afterKeyboard, isPhone, trackKeyboard } from './viewport';
 
 export interface Move {
   film: FilmRef;
@@ -95,6 +96,7 @@ export async function startGame(opts: StartOptions, gen: number): Promise<void> 
     busy: false,
   };
   document.title = `${start.name} → Justin Timberlake · Six Degrees`;
+  trackKeyboard();
   renderPlay();
   window.scrollTo({ top: 0 });
 }
@@ -160,7 +162,12 @@ function renderPlay(scroll = false): void {
     if (caret && caret.value === picker.input.value) picker.input.setSelectionRange(caret.start ?? end, caret.end ?? end);
     else picker.input.setSelectionRange(end, end);
   }
-  if (scroll && panel.getBoundingClientRect().top > window.innerHeight * 0.6) panel.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
+  if (!scroll) return;
+  const behavior = reducedMotion() ? 'auto' : 'smooth';
+  // On a phone the panel is docked to the bottom (play.css), so bring the newest setlist
+  // card down to sit just above it. Elsewhere, bring the panel up if it's fallen low.
+  if (isPhone()) afterKeyboard(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior }));
+  else if (panel.getBoundingClientRect().top > window.innerHeight * 0.6) panel.scrollIntoView({ behavior, block: 'start' });
 }
 
 /**

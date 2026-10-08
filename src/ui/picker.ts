@@ -110,6 +110,8 @@ export class Picker {
 
   /** Move the highlight by `delta` enabled options, stopping at either end. */
   move(delta: number): void {
+    // On phones the list is drawn bottom-up (play.css), so ↑ goes further down the ranking.
+    if (getComputedStyle(this.list).flexDirection === 'column-reverse') delta = -delta;
     const enabled = this.enabled();
     if (enabled.length === 0) return;
     const at = enabled.indexOf(this.current()!);

@@ -314,8 +314,12 @@ li:last-child > .option {
   border-bottom: 0;
 }
 
-.option:hover:not(:disabled) {
-  background: var(--hover);
+/* Only where there's a real pointer: phones keep :hover on whatever was tapped last, which
+   after a redraw is some other entry, and looks like a selection. */
+@media (hover: hover) {
+  .option:hover:not(:disabled) {
+    background: var(--hover);
+  }
 }
 
 .option:disabled {

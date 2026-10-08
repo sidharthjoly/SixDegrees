@@ -203,6 +203,152 @@
   text-align: center;
 }
 
+/* ------------------------------------------------------------ phones: the panel docks */
+
+/*
+ * On a phone the film/cast panel docks to the bottom of the screen, riding on top of the
+ * keyboard while it's up, with the matches stacked upwards from the search box: the box and
+ * the best match sit under the thumb, and the setlist scrolls above. viewport.ts keeps --kb
+ * (the keyboard's height) and --vvh (the visible height) current, and sets html.kb-open.
+ * The DOM keeps its order (box, then list, best match first) for screen readers; only the
+ * picture flips. Same media query as PHONE_QUERY in viewport.ts.
+ */
+@media (pointer: coarse) and (max-width: 640px) {
+  /* The page is at least a screen tall, with the dock pushed to its foot. */
+  main:has(> .play) {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    padding-bottom: 0;
+  }
+
+  main > .play {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .play-main {
+    position: sticky;
+    bottom: var(--kb, 0px);
+    z-index: 2;
+    flex: none;
+    margin: auto -16px 0;
+    padding: 2px 12px calc(10px + env(safe-area-inset-bottom));
+    border-top: 3px solid var(--line);
+    border-radius: 22px 22px 0 0;
+    background: var(--card);
+    color: var(--card-ink);
+    box-shadow: 0 -4px 0 var(--shadow);
+  }
+
+  /* The keyboard covers the home indicator, so its inset isn't needed. */
+  html.kb-open .play-main {
+    padding-bottom: 8px;
+  }
+
+  .play-main .panel {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 8px 2px 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .play-main .panel h2 {
+    margin-bottom: 2px;
+    font-size: 13px;
+  }
+
+  .play-main .panel h2 .name {
+    font-size: 16px;
+  }
+
+  .play-main .panel > .muted {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .play-main .link-btn {
+    align-self: flex-start;
+    min-height: 36px;
+    margin: 0;
+  }
+
+  .play-main .options {
+    order: 1;
+    display: flex;
+    flex-direction: column-reverse;
+    max-height: min(32vh, 280px);
+    margin-top: 4px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Dividers go above each entry instead of below, so they still fall between entries
+     once the list is upside down. */
+  .play-main .option {
+    border-top: 2px dashed var(--divider);
+    border-bottom: 0;
+  }
+
+  .play-main .options > .option:last-child,
+  .play-main .opt-group > .option:last-child {
+    border-top: 0;
+  }
+
+  /* Keep each group's heading above its entries. */
+  .play-main .opt-group {
+    display: flex;
+    flex-direction: column-reverse;
+  }
+
+  .play-main .opt-group-head {
+    order: 1;
+  }
+
+  .play-main .opt-group + .opt-group {
+    margin: 0 0 10px;
+  }
+
+  .play-main .pick-note {
+    order: 2;
+  }
+
+  .play-main .panel .filter {
+    order: 3;
+    margin: 8px 0 0;
+  }
+
+  .play-main .actions {
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin: 10px 0 0;
+  }
+
+  .play-main .actions .btn {
+    flex: 1 1 auto;
+    min-height: 40px;
+    padding: 0 10px;
+    font-size: 14px;
+    box-shadow: 3px 3px 0 var(--shadow);
+  }
+
+  /* While typing, the list gets the room: everything above the keyboard but a strip of
+     setlist and the search box. */
+  html.kb-open .play-main .options {
+    max-height: max(120px, calc(var(--vvh, 50vh) - 210px));
+  }
+
+  html.kb-open .play-main .panel > .muted,
+  html.kb-open .play-main .actions {
+    display: none;
+  }
+}
+
 /* ------------------------------------------------------------ motion (none when reduced) */
 
 @media (prefers-reduced-motion: no-preference) {
