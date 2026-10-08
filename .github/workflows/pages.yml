@@ -38,7 +38,9 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: lts/*
+          # The build runs scripts/previews.ts directly with Node's type stripping, and this
+          # is the version it's tested on. Revisit when 26 becomes LTS (late October 2026).
+          node-version: 26
           cache: npm
 
       - run: npm ci
