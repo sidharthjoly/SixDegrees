@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { Plugin } from 'vite';
 import { configDefaults, defineConfig } from 'vitest/config';
 import { addDays, daysBetween } from './src/days';
@@ -55,11 +56,30 @@ function preloadData(version: string): Plugin {
   };
 }
 
+/**
+ * Restarts the dev server when `npm run data` rebuilds the data. The data version is compiled
+ * in when the server starts, and the rebuild deletes the old folder, so an open page would
+ * otherwise go on asking for files that are gone.
+ */
+function restartOnNewData(): Plugin {
+  return {
+    name: 'restart-on-new-data',
+    apply: 'serve',
+    configureServer(server) {
+      const file = resolve('public/data/version.json');
+      server.watcher.add(file);
+      server.watcher.on('change', (changed) => {
+        if (resolve(changed) === file) void server.restart();
+      });
+    },
+  };
+}
+
 export default defineConfig({
   // Relative asset paths, so the build works on the custom domain and on a /repo/ path.
   base: './',
   define: { __DATA_VERSION__: JSON.stringify(dataVersion()) },
-  plugins: [preloadData(dataVersion())],
+  plugins: [preloadData(dataVersion()), restartOnNewData()],
   // Older phones stay on old browsers (an iPhone 7 stops at iOS 15), so newer syntax is
   // rewritten for them. Features a rewrite can't fix are guarded by src/compat.test.ts.
   build: { target: ['es2020', 'safari15', 'chrome100', 'firefox100', 'edge100'] },

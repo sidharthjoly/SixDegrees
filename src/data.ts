@@ -15,7 +15,10 @@ export class StaleDataError extends Error {
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(BASE + path);
-  if (res.status === 404) throw new StaleDataError();
+  // Gone: a 404 on the live site. Some servers (Vite's dev server among them) answer a
+  // missing file with the page itself instead, which would otherwise surface as a JSON
+  // parse error ("The string did not match the expected pattern" in Safari).
+  if (res.status === 404 || res.headers.get('content-type')?.includes('text/html')) throw new StaleDataError();
   if (!res.ok) throw new Error(`Couldn't load ${path} (HTTP ${res.status})`);
   return (await res.json()) as T;
 }
