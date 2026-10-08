@@ -5,6 +5,7 @@ import { foldList } from '../lists';
 import { JT, dayNumber, filterByText, fold, grade, optimalPath, plural, reachIn, type Grade } from '../logic';
 import type { Film, FilmRef, Mode, Person, PersonRef, Qid } from '../types';
 import { challengeBanner } from './challenge';
+import { feel } from './haptics';
 import { h, yearOf, type Child } from './dom';
 import { Picker, type PickGroup, type PickOption } from './picker';
 import { finish } from './result';
@@ -492,13 +493,17 @@ export function choosePerson(ref: PersonRef, via?: FilmRef): Promise<void> {
   const through = via ?? g?.film;
   if (!g || !through || g.banned.has(through.id)) return Promise.resolve();
   const film: FilmRef = { id: through.id, title: through.title, year: through.year };
+  // Still inside the tap here, which the iPhone tick needs (haptics.ts).
+  if (!g.busy) feel('pick');
   return guarded(async (g) => {
     const from = current(g);
     const person = await getPerson(ref.id);
-    g.moves.push({ film, person, grade: grade(distOf(g, from), distOf(g, person)), hinted: g.hint });
+    const graded = grade(distOf(g, from), distOf(g, person));
+    g.moves.push({ film, person, grade: graded, hinted: g.hint });
     g.film = null;
     g.filter = '';
     g.hint = false;
+    feel(person.id === JT ? 'win' : graded);
     if (person.id === JT) {
       g.busy = false;
       await finish(g, false);
