@@ -1,6 +1,6 @@
 import { getFilm } from '../data';
 import { dayNumber, plural } from '../logic';
-import { MIN_PLAYERS_FOR_STANDING, dayStats, online, standingText, type DayStats } from '../online';
+import { dayStats, everyoneLead, online, type DayStats } from '../online';
 import { percent, type ModeStats } from '../scores';
 import type { Mode } from '../types';
 import { h } from './dom';
@@ -50,12 +50,8 @@ export function everyonePanel(input: EveryoneInput, uploaded: Promise<void>, onS
 function body(input: EveryoneInput, s: DayStats, opener: string | null): Node[] {
   const pct = (n: number) => `${percent(n, s.players) ?? 0}%`;
   const players = plural(s.players, 'player');
-  const standing = input.late ? null : standingText(s, input.gaveUp);
-  let lead: Node;
-  if (input.late) lead = h('p', { class: 'everyone-lead' }, `${players} played it on the day. Late plays like yours aren’t counted.`);
-  else if (s.players < MIN_PLAYERS_FOR_STANDING) lead = h('p', { class: 'everyone-lead' }, `You’re one of the first ${players} today. Come back later to see where you stand.`);
-  else if (standing) lead = h('p', { class: 'everyone-lead' }, 'You ', h('strong', null, standing.replace(/^Beat/, 'beat')), ` · ${players} so far today.`);
-  else lead = h('p', { class: 'everyone-lead' }, `${players} so far today.`);
+  const [before, highlight, after] = everyoneLead(s, input.gaveUp, input.late);
+  const lead = h('p', { class: 'everyone-lead' }, before, highlight && h('strong', null, highlight), after);
 
   const list: Tile[] = [
     { label: 'Made par', value: pct(s.atPar), detail: `${s.atPar} of ${players}` },

@@ -194,6 +194,20 @@ export function standingText(s: DayStats, gaveUp: boolean): string | null {
   return pct >= 1 ? `Beat ${pct}% of players` : null;
 }
 
+/**
+ * The opening line of "Everyone today", as [before, highlighted, after]: the highlight is the
+ * standing when there is one ("You [beat 72% of players] · 140 so far today.").
+ */
+export function everyoneLead(s: DayStats, gaveUp: boolean, late: boolean): [string, string | null, string] {
+  const players = `${s.players} ${s.players === 1 ? 'player' : 'players'}`;
+  if (late) return [`${players} played it on the day. Late plays like yours aren’t counted.`, null, ''];
+  if (s.players <= 1) return ['You’re the first to play today. Come back later to see where you stand.', null, ''];
+  if (s.players < MIN_PLAYERS_FOR_STANDING) return [`You’re one of the first ${players} today. Come back later to see where you stand.`, null, ''];
+  const standing = standingText(s, gaveUp);
+  if (standing) return ['You ', standing.replace(/^Beat/, 'beat'), ` · ${players} so far today.`];
+  return [`${players} so far today.`, null, ''];
+}
+
 // ------------------------------------------------------------------ groups
 
 export interface GroupResult {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GROUP_CODE_RE, MIN_PLAYERS_FOR_STANDING, compareResults, online, routeCode, standingText, uploadArgs, type DayStats } from './online';
+import { GROUP_CODE_RE, MIN_PLAYERS_FOR_STANDING, compareResults, everyoneLead, online, routeCode, standingText, uploadArgs, type DayStats } from './online';
 
 describe('online', () => {
   it('is off without the Supabase settings, as in tests and CI', () => {
@@ -66,6 +66,27 @@ describe('standingText', () => {
     expect(standingText(stats(50, 30), true)).toBeNull();
     expect(standingText(stats(50, 0), false)).toBeNull();
     expect(standingText({ ...stats(50, 0), me: null }, false)).toBeNull();
+  });
+});
+
+describe('everyoneLead', () => {
+  const stats = (players: number, beat: number): DayStats => ({ players, atPar: 0, gaveUp: 0, films: {}, opener: null, me: { beat, sameOpener: 0, sameRoute: 0 } });
+
+  it('welcomes the first player of the day', () => {
+    expect(everyoneLead(stats(1, 0), false, false)).toEqual(['You’re the first to play today. Come back later to see where you stand.', null, '']);
+  });
+
+  it('holds back the standing while there are few players', () => {
+    expect(everyoneLead(stats(4, 3), false, false)[0]).toBe('You’re one of the first 4 players today. Come back later to see where you stand.');
+  });
+
+  it('highlights the standing once there are enough', () => {
+    expect(everyoneLead(stats(101, 72), false, false)).toEqual(['You ', 'beat 72% of players', ' · 101 players so far today.']);
+    expect(everyoneLead(stats(101, 72), true, false)).toEqual(['101 players so far today.', null, '']);
+  });
+
+  it('explains that late plays aren’t counted', () => {
+    expect(everyoneLead(stats(1, 0), false, true)[0]).toBe('1 player played it on the day. Late plays like yours aren’t counted.');
   });
 });
 

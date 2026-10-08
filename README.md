@@ -65,7 +65,7 @@ npm run build && npm run preview   # production build with link previews, http:/
 
 **Global stats and groups.** Run `supabase/schema.sql` in the Supabase project (it's safe to run again after changes), then give the build the project's URL and publishable key as repository variables, `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Both are public: they ship in the bundle.
 
-**Challenge previews.** Deploy the Worker with `npx wrangler deploy --config worker/wrangler.toml`. It adds a route for `sixdegrees.sidharthjoly.com/d/*` on the `sidharthjoly.com` zone, which needs the domain proxied through Cloudflare.
+**Challenge previews.** Deploy the Worker with `npx wrangler@4.136.3 deploy --config worker/wrangler.toml` (the version it was tested with). It adds a route for `sixdegrees.sidharthjoly.com/d/*` on the `sidharthjoly.com` zone, which needs the domain proxied through Cloudflare.
 
 ---
 

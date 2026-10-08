@@ -1,4 +1,4 @@
-# Personalised previews for challenge links. Deploy with: npx wrangler deploy --config worker/wrangler.toml
+# Personalised previews for challenge links. Deploy with: npx wrangler@4.136.3 deploy --config worker/wrangler.toml
 name = "sixdegrees-previews"
 main = "index.ts"
 compatibility_date = "2026-09-01"

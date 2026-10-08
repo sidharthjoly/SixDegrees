@@ -10,3 +10,5 @@ public/data/
 .claude/
 # Local state from wrangler dev (worker/).
 .wrangler/
+# Supabase CLI state, if it is ever run from here.
+supabase/.temp/
