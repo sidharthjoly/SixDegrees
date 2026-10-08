@@ -14,9 +14,13 @@ A film trivia game. You start from an actor, athlete or filmmaker, pick a film t
 - **Hard mode:** JT's five best-known films are banned and there are no hints. Banning hubs barely raises par (the graph nearly always has another route of the same length), so hard mode is about losing the obvious routes.
 - **Type a co-star:** from the films list, type someone's name and the game finds the film you share.
 - **Keyboard play** on desktop: type to filter, ↑/↓ and Enter to pick, Esc to go back or undo, Alt+H for a hint.
-- **Share image** (spoiler-free, or with your path) and **link previews**: shared daily links unfurl in chat apps with the day's sticker.
+- **Share image** as a square or a 9:16 story (spoiler-free, or with your path), and a **share video**: a short MP4 of your countdown building up, for TikTok, Reels and stories.
+- **Link previews:** shared daily links unfurl in chat apps with the day's sticker, and challenge links with the sender's score ("Sid got to JT in 3 films. Can you beat that?").
 - **Beat my score:** a challenge link carries your result; your friend sees your grades while playing and your films once they finish.
+- **Everyone today:** after a daily, where you stand among everyone who played it ("Beat 72% of players"), the par rate, the most popular opening film and whether anyone else took your route.
+- **Groups:** a leaderboard for a group chat. Start one, share the link, and members see each other's daily results and a weekly points table.
 - **Your charts** (streaks, par rate, score distribution) and **past dailies**, saved in the browser.
+- **On phones** the search panel sits at the bottom of the screen, above the keyboard, moves get a haptic tap (Android; iPhones get a tick on each pick), and the home page's dot grid bulges under your finger.
 
 Cristiano Ronaldo is 3 films away: *Goal III* → David Beckham → *The Man from U.N.C.L.E.* → Armie Hammer → *The Social Network* → JT.
 
@@ -35,9 +39,13 @@ Cristiano Ronaldo is 3 films away: *Goal III* → David Beckham → *The Man fro
 
 **Hard mode** gets its own BFS with the five banned films removed; each person carries both distances and parent pointers.
 
-**Static files.** The output is sharded by `qid % 512` into `p/*.json` (people: name, fame, distance and parent pointer for both modes, films) and `f/*.json` (films: title, year, fame, cast), plus `search.json` (names, nicknames, best-known film) and `meta.json`. Titles and names are inlined, so a move loads two small files (about 50 KB gzipped each). Everything goes under `public/data/v/<content hash>/`, and the hash is compiled into the bundle, so a page never mixes a new bundle with old cached data; if the data it needs is gone after a redeploy, the game asks you to reload. There's no server and no API key.
+**Static files.** The output is sharded by `qid % 512` into `p/*.json` (people: name, fame, distance and parent pointer for both modes, films) and `f/*.json` (films: title, year, fame, cast), plus `search.json` (names, nicknames, best-known film) and `meta.json`. Titles and names are inlined, so a move loads two small files (about 50 KB gzipped each). Everything goes under `public/data/v/<content hash>/`, and the hash is compiled into the bundle, so a page never mixes a new bundle with old cached data; if the data it needs is gone after a redeploy, the game asks you to reload. The game itself needs no server.
 
 **Link previews.** After `vite build`, `scripts/previews.ts` draws a 1200×630 image per daily with the same canvas code as the in-game share image (`src/card.ts`, run in Node via `@napi-rs/canvas` with the TTFs in `assets/fonts/`) and writes `d/<date>/` pages with Open Graph tags that redirect into the game. It covers the last 90 days through 45 days ahead; `404.html` sends older day links to the game.
+
+**Global stats and groups** are the only part with a server: a Supabase database (`supabase/schema.sql`). There are no accounts; a player is a random id kept in the browser, which no function ever returns. The tables live in their own `sixdegrees` schema, which the Data API doesn't expose, and the site reaches them only through a few `public.sixdegrees_*` functions, so the database can share a Supabase project with another app. Without the Supabase settings at build time (local dev, forks) these features are hidden.
+
+**Challenge previews.** A challenge link is a daily's page plus `?vs=<code>`, and GitHub Pages serves the same page whatever the query. A small Cloudflare Worker (`worker/`) in front of `/d/*` rewrites the page's title tags with the sender's score when the code is valid, and passes everything else through untouched.
 
 ## Develop
 
@@ -54,6 +62,10 @@ npm run build && npm run preview   # production build with link previews, http:/
 ## Deploy
 
 `.github/workflows/pages.yml` rebuilds the data, tests, builds and publishes to GitHub Pages on every push to `main` and once a month. It sets `SITE_URL` so preview tags carry absolute URLs.
+
+**Global stats and groups.** Run `supabase/schema.sql` in the Supabase project (it's safe to run again after changes), then give the build the project's URL and publishable key as repository variables, `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Both are public: they ship in the bundle.
+
+**Challenge previews.** Deploy the Worker with `npx wrangler deploy --config worker/wrangler.toml`. It adds a route for `sixdegrees.sidharthjoly.com/d/*` on the `sidharthjoly.com` zone, which needs the domain proxied through Cloudflare.
 
 ---
 

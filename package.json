@@ -6,9 +6,9 @@
   "scripts": {
     "data": "python3 scripts/fetch_wikidata.py && python3 scripts/build_graph.py",
     "dev": "vite",
-    "build": "tsc && tsc -p scripts && vite build && node scripts/previews.ts",
+    "build": "tsc && tsc -p scripts && tsc -p worker && vite build && node scripts/previews.ts",
     "preview": "vite preview",
-    "typecheck": "tsc && tsc -p scripts",
+    "typecheck": "tsc && tsc -p scripts && tsc -p worker",
     "test": "vitest run"
   },
   "devDependencies": {

@@ -1,0 +1,19 @@
+{
+  // Type-checks the Cloudflare Worker and the game code it shares (src/challenge-preview.ts).
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2023", "webworker"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": [],
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true
+  },
+  "include": ["index.ts", "env.d.ts"]
+}

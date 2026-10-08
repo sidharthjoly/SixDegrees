@@ -1,0 +1,8 @@
+# Personalised previews for challenge links. Deploy with: npx wrangler deploy --config worker/wrangler.toml
+name = "sixdegrees-previews"
+main = "index.ts"
+compatibility_date = "2026-09-01"
+workers_dev = false
+
+# Only the daily preview pages go through the Worker; everything else is served as before.
+routes = [{ pattern = "sixdegrees.sidharthjoly.com/d/*", zone_name = "sidharthjoly.com" }]

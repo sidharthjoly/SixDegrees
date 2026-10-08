@@ -61,10 +61,13 @@ jobs:
         run: npm run data
 
       # Also draws a link-preview image and page for each daily (scripts/previews.ts), whose
-      # tags need the site's absolute address.
+      # tags need the site's absolute address. The Supabase repo variables turn on global
+      # stats and groups (src/online.ts); without them those features are left out.
       - run: npm run build
         env:
           SITE_URL: https://sixdegrees.sidharthjoly.com/
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
       - uses: actions/configure-pages@v6
 

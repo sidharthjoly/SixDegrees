@@ -8,3 +8,5 @@ data/raw/
 public/data/
 # Local tooling: dev-server launch config and agent worktrees.
 .claude/
+# Local state from wrangler dev (worker/).
+.wrangler/
