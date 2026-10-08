@@ -303,6 +303,9 @@
 .dot-field {
   position: fixed;
   inset: 0;
+  /* A canvas otherwise displays at its backing size, which is 2x the window on high-DPI screens. */
+  width: 100%;
+  height: 100%;
   z-index: 0;
   pointer-events: none;
 }
