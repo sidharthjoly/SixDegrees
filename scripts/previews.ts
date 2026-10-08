@@ -2,7 +2,7 @@
  * Link previews, run after `vite build` (see package.json). For every daily from 90 days ago
  * (or the first daily, if later) through 45 days from now it writes:
  *   dist/og/<date>.png             the day's sticker, 1200×630, drawn by src/card.ts
- *   dist/d/<date>/index.html       Open Graph tags, then on to #/daily/<date>
+ *   dist/d/<date>/index.html       the game's page with that day's Open Graph tags
  *   dist/d/<date>/hard/index.html  the same for hard mode
  * plus dist/og/home.png for the home page, dist/404.html, and the absolute URLs in
  * dist/index.html's preview tags.
@@ -138,6 +138,8 @@ async function main(): Promise<void> {
     site: footer,
   });
   rewriteIndex(site);
+  // Each daily's page is the game's own page with that day's preview tags.
+  const app = readFileSync(join(DIST, 'index.html'), 'utf8');
   write('404.html', notFoundPage());
 
   const data = loadData();
@@ -167,7 +169,7 @@ async function main(): Promise<void> {
     for (const [mode, par] of pars) {
       // The daily pool only holds people hard mode can reach, but don't publish "Par -1" if that changes.
       if (par < 0) continue;
-      write(pagePath(day, mode) + 'index.html', dailyPage({ site, day, number, mode, name, par }));
+      write(pagePath(day, mode) + 'index.html', dailyPage({ site, day, number, mode, name, par }, app));
     }
   }
   await images.done();

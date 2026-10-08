@@ -3,16 +3,18 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="description" content="A film trivia game: link any actor, athlete or filmmaker to Justin Timberlake through the films they share." />
-    <title>Six Degrees of Justin Timberlake</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <meta name="theme-color" content="#b9b4ff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#1b1745" media="(prefers-color-scheme: dark)" />
     <!--
       Link previews. After the build, scripts/previews.ts fills in the SITE_URL placeholders
       with the absolute address (crawlers need absolute URLs) and draws og/home.png. vite-ignore stops Vite from
-      treating the image URLs as files to bundle. Each daily gets its own tags in d/<date>/.
+      treating the image URLs as files to bundle. Each daily's page, d/<date>/, is a copy of
+      this file with everything between the preview-tags markers swapped for that day's tags.
     -->
+    <!-- preview-tags -->
+    <title>Six Degrees of Justin Timberlake</title>
+    <meta name="description" content="A film trivia game: link any actor, athlete or filmmaker to Justin Timberlake through the films they share." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Six Degrees of Justin Timberlake" />
     <meta property="og:title" content="Six Degrees of Justin Timberlake" />
@@ -25,6 +27,7 @@
     <meta property="og:image:alt" content="A pink starburst sticker on a periwinkle dot grid: Six Degrees of Justin Timberlake, a new star every midnight." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="%SITE_URL%og/home.png" vite-ignore />
+    <!-- /preview-tags -->
   </head>
   <body>
     <div id="ticker"></div>

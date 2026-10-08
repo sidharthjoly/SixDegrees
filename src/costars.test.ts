@@ -139,18 +139,18 @@ describe('CostarSearch', () => {
     return { load, flush, requested, peak: () => peak, pending };
   }
 
-  it('loads at most four films at a time, best known first, reporting progress', async () => {
+  it('loads at most eight films at a time, best known first, reporting progress', async () => {
     const c = controlled();
-    const s = new CostarSearch({ id: ME, films: refs(10) }, new Set(), c.load);
+    const s = new CostarSearch({ id: ME, films: refs(20) }, new Set(), c.load);
     let changes = 0;
     s.watch(() => changes++);
-    expect(c.requested).toEqual([100, 101, 102, 103]);
+    expect(c.requested).toEqual([100, 101, 102, 103, 104, 105, 106, 107]);
     while (!s.done) await c.flush();
-    expect(c.peak()).toBe(4);
-    expect(c.requested).toEqual(refs(10).map((f) => f.id));
-    expect(s.loaded).toBe(10);
-    expect(changes).toBe(10);
-    expect(s.index.search('co star').total).toBe(10);
+    expect(c.peak()).toBe(8);
+    expect(c.requested).toEqual(refs(20).map((f) => f.id));
+    expect(s.loaded).toBe(20);
+    expect(changes).toBe(20);
+    expect(s.index.search('co star').total).toBe(20);
   });
 
   it('never fetches banned films', async () => {
@@ -164,17 +164,17 @@ describe('CostarSearch', () => {
 
   it('pauses when unwatched and resumes where it left off', async () => {
     const c = controlled();
-    const s = new CostarSearch({ id: ME, films: refs(10) }, new Set(), c.load);
+    const s = new CostarSearch({ id: ME, films: refs(20) }, new Set(), c.load);
     s.watch(() => {});
     s.unwatch();
     await c.flush();
-    // The four in flight landed, but nothing new started.
-    expect(s.loaded).toBe(4);
-    expect(c.requested).toHaveLength(4);
-    s.watch(() => {});
+    // The eight in flight landed, but nothing new started.
+    expect(s.loaded).toBe(8);
     expect(c.requested).toHaveLength(8);
+    s.watch(() => {});
+    expect(c.requested).toHaveLength(16);
     while (!s.done) await c.flush();
-    expect(new Set(c.requested).size).toBe(10);
+    expect(new Set(c.requested).size).toBe(20);
   });
 
   it('counts a film that fails to load and carries on', async () => {

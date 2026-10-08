@@ -1,4 +1,4 @@
-import { getPerson, loadMeta, loadSearch } from '../data';
+import { getPerson, loadMeta, loadSearch, loadSearchTop } from '../data';
 import { JT, dailyPick, dayKey, dayNumber, emojiRow, makeSearch, plural, shareText, type SearchHit } from '../logic';
 import { online } from '../online';
 import { href } from '../router';
@@ -225,6 +225,9 @@ function pickStars(n: number, random = Math.random): [Qid, string][] {
 function startCard(): HTMLElement {
   const results = h('ul', { class: 'results', id: 'search-results' });
   let search: ((q: string, limit?: number) => SearchHit[]) | null = null;
+  /** Searching the full list, not just the best-known names that answer first. */
+  let complete = false;
+  let loading: Promise<void> | null = null;
   let top: SearchHit | undefined;
   const playHref = (qid: Qid) => href({ name: 'play', qid, mode: 'normal', vs: null });
 
@@ -246,7 +249,8 @@ function startCard(): HTMLElement {
         ),
       ),
     );
-    if (q.trim() && hits.length === 0) results.append(h('li', { class: 'empty' }, 'No one by that name. Only people with a Wikipedia article in several languages are listed here.'));
+    if (q.trim() && hits.length === 0)
+      results.append(h('li', { class: 'empty' }, complete ? 'No one by that name. Only people with a Wikipedia article in several languages are listed here.' : 'Searching everyone…'));
   };
 
   const input = h('input', {
@@ -258,14 +262,28 @@ function startCard(): HTMLElement {
     'aria-controls': 'search-results',
     oninput: () => show(input.value),
     onfocus: () => {
-      if (search) return;
+      if (loading) return;
       results.replaceChildren(h('li', { class: 'empty' }, 'Loading names…'));
-      loadSearch()
+      // The 2,000 best-known names (about 70 KB) answer straight away; the full list (about
+      // 0.9 MB, seconds on a slow phone connection) follows, after them so it doesn't
+      // compete for the connection, and takes over when it arrives.
+      loading = loadSearchTop()
         .then((index) => {
+          if (complete) return;
           search = makeSearch(index);
           show(input.value);
         })
-        .catch((err: unknown) => results.replaceChildren(h('li', { class: 'empty' }, String(err))));
+        .catch(() => undefined)
+        .then(loadSearch)
+        .then((index) => {
+          search = makeSearch(index);
+          complete = true;
+          show(input.value);
+        })
+        .catch((err: unknown) => {
+          if (!search) results.replaceChildren(h('li', { class: 'empty' }, String(err)));
+          else complete = true;
+        });
     },
     onkeydown: (e: KeyboardEvent) => {
       if (e.key === 'Enter' && top) go(playHref(top.row[0]));

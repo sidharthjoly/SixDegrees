@@ -15,6 +15,8 @@ versa), and an unchanged rebuild keeps the same URLs.
   meta.json        build stats, distance histograms, daily-challenge pool, hard-mode bans
   search.json      [qid, name, sitelinks, dist, best-known film, hardDist, aliases?]
                    for people with enough sitelinks to be worth autocompleting
+  search-top.json  the first SEARCH_TOP rows of search.json (the best known), which
+                   the name search answers from while the full list downloads
   p/NN.json        qid -> [name, sitelinks, dist, parentFilm, parentPerson,
                            [[film, title, year, sitelinks]...],
                            hardDist, hardParentFilm, hardParentPerson]
@@ -22,6 +24,8 @@ versa), and an unchanged rebuild keeps the same URLs.
 
 Shard NN is qid % SHARDS, so the client fetches one small file per lookup. Film titles
 and cast names are inlined (best known first) so a list renders from a single shard.
+4096 shards keep each file to about 8 KB gzipped: one move costs one small download, and
+the co-star search, which fetches every film a person was in, doesn't pull megabytes.
 hardDist is -1 for someone hard mode can't reach (their only links are banned films).
 """
 
@@ -40,7 +44,9 @@ OUT = ROOT / "public" / "data"
 
 JT = 43432
 RONALDO = 11571
-SHARDS = 512
+SHARDS = 4096
+# Rows of search-top.json: enough for nearly every name people type first.
+SEARCH_TOP = 2000
 # Films with casts this large are mostly crowd-scene credit dumps; they turn into
 # hubs that make every link trivial. 150 drops ~0.1% of films.
 MAX_CAST = 150
@@ -307,6 +313,8 @@ def main() -> None:
     search.sort(key=lambda r: (-r[2], r[0]))
     size = write_json(stage / "search.json", search)
     print(f"search.json: {len(search):,} people ({len(aliases):,} with aliases), {size / 1e6:.2f} MB raw")
+    size = write_json(stage / "search-top.json", search[:SEARCH_TOP])
+    print(f"search-top.json: {min(len(search), SEARCH_TOP):,} people, {size / 1e3:.0f} KB raw")
     for p in (RONALDO, JT):
         print(f"  aliases for {people[p][0]}: {aliases.get(p)}")
 

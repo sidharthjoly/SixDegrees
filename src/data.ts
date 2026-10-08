@@ -35,14 +35,16 @@ const files = new Map<string, Promise<unknown>>();
 
 export const loadMeta = () => once(files, 'meta', () => getJson<Meta>('meta.json')) as Promise<Meta>;
 export const loadSearch = () => once(files, 'search', () => getJson<SearchRow[]>('search.json')) as Promise<SearchRow[]>;
+/** The best-known rows of search.json, small enough to answer the first keystrokes. */
+export const loadSearchTop = () => once(files, 'search-top', () => getJson<SearchRow[]>('search-top.json')) as Promise<SearchRow[]>;
 
 /**
- * Shards, least recently used first. A co-star search on a prolific actor touches 100+
- * film shards (~100 KB of JSON each), so keep a bounded number rather than every shard
- * seen this session.
+ * Shards, least recently used first. A co-star search on a prolific actor touches hundreds
+ * of film shards (~15 KB of JSON each), so keep a bounded number, about 20 MB, rather than
+ * every shard seen this session.
  */
 const shardCache = new Map<string, Promise<unknown>>();
-const MAX_SHARDS = 160;
+const MAX_SHARDS = 1200;
 
 async function row<T>(kind: 'p' | 'f', id: Qid): Promise<T | undefined> {
   const { shards } = await loadMeta();

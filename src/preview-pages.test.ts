@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EPOCH } from './logic';
-import { DAILY_PATH_RE, dailyPage, displaySite, escapeHtml, normalizeSite, notFoundPage, pagePath, previewDays, rootPrefix, shortDate } from './preview-pages';
+import { DAILY_PATH_RE, TAGS_END, TAGS_START, dailyPage, displaySite, escapeHtml, normalizeSite, notFoundPage, pagePath, previewDays, rootPrefix, shortDate } from './preview-pages';
 
 describe('normalizeSite', () => {
   it('ends with exactly one slash', () => {
@@ -68,10 +68,24 @@ describe('page paths', () => {
 
 describe('dailyPage', () => {
   const site = 'https://sixdegrees.sidharthjoly.com/';
-  const page = dailyPage({ site, day: '2026-10-19', number: 12, mode: 'normal', name: 'Dwayne "The Rock" Johnson <script>', par: 3 });
+  // The shape of dist/index.html: the game's page, with the home page's tags between markers.
+  const app = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script>/* early data downloads */</script>
+    ${TAGS_START}
+    <title>Six Degrees of Justin Timberlake</title>
+    <meta property="og:title" content="Six Degrees of Justin Timberlake" />
+    ${TAGS_END}
+    <script type="module" crossorigin src="./assets/index-abc.js"></script>
+  </head>
+  <body><main id="app"><p class="loading">Loading…</p></main></body>
+</html>`;
+  const page = dailyPage({ site, day: '2026-10-19', number: 12, mode: 'normal', name: 'Dwayne "The Rock" Johnson <script>', par: 3 }, app);
   const meta = (key: string) => new RegExp(`<meta (?:property|name)="${key}" content="([^"]*)">`).exec(page)?.[1];
 
-  it('has the Open Graph tags, with absolute URLs', () => {
+  it('has the Open Graph tags, with absolute URLs, in place of the home page\'s', () => {
     expect(page).toContain('<title>Six Degrees of JT #12</title>');
     expect(meta('og:title')).toBe('Six Degrees of JT #12');
     expect(meta('og:url')).toBe('https://sixdegrees.sidharthjoly.com/d/2026-10-19/');
@@ -79,27 +93,43 @@ describe('dailyPage', () => {
     expect(meta('twitter:card')).toBe('summary_large_image');
     expect(meta('og:image:width')).toBe('1200');
     expect(meta('og:image:height')).toBe('630');
+    expect(page).not.toContain('Six Degrees of Justin Timberlake</title>');
+    expect(page.match(/<title>/g)).toHaveLength(1);
   });
 
   it('escapes the name everywhere it appears', () => {
     expect(meta('og:description')).toBe('Connect Dwayne &quot;The Rock&quot; Johnson &lt;script&gt; to Justin Timberlake. Par 3.');
     expect(page).not.toContain('<script>"');
-    expect(page.match(/<script>/g)).toHaveLength(1);
+    expect(page).not.toContain('Johnson <script>');
   });
 
-  it('forwards people to the game with a relative link, keeping any ?vs= code', () => {
-    expect(page).toContain('location.replace("../../#/daily/2026-10-19" + location.search)');
-    expect(page).toContain('href="../../#/daily/2026-10-19"');
-    // Crawlers can follow a meta refresh to the home page's generic preview.
+  it('is the game itself, which moves to the game\'s address first, keeping any ?vs= code', () => {
+    expect(page).toContain('src="./assets/index-abc.js"');
+    expect(page).toContain('<base href="../../">');
+    expect(page).toContain(`history.replaceState(null, '', "#/daily/2026-10-19" + location.search)`);
+    // Before anything that reads a relative URL, including the early downloads.
+    const at = (s: string) => page.indexOf(s);
+    for (const first of ['<base href', 'history.replaceState']) {
+      expect(at(first)).toBeLessThan(at('<meta charset'));
+      expect(at(first)).toBeLessThan(at('early data downloads'));
+      expect(at(first)).toBeLessThan(at('./assets/'));
+    }
+    // No redirect, so no second page load (and nothing for a crawler to follow away).
+    expect(page).not.toContain('location.replace');
     expect(page).not.toContain('http-equiv="refresh"');
   });
 
   it('marks hard mode and goes one level further up', () => {
-    const hard = dailyPage({ site, day: '2026-10-19', number: 12, mode: 'hard', name: 'Pelé', par: 4 });
+    const hard = dailyPage({ site, day: '2026-10-19', number: 12, mode: 'hard', name: 'Pelé', par: 4 }, app);
     expect(hard).toContain('<meta property="og:title" content="Six Degrees of JT #12 (hard)">');
     expect(hard).toContain('<meta property="og:url" content="https://sixdegrees.sidharthjoly.com/d/2026-10-19/hard/">');
-    expect(hard).toContain('location.replace("../../../#/daily/2026-10-19/hard" + location.search)');
+    expect(hard).toContain('<base href="../../../">');
+    expect(hard).toContain(`history.replaceState(null, '', "#/daily/2026-10-19/hard" + location.search)`);
     expect(hard).toContain('Par 4.');
+  });
+
+  it('refuses a page that has lost its markers, rather than publish the home page\'s tags', () => {
+    expect(() => dailyPage({ site, day: '2026-10-19', number: 12, mode: 'normal', name: 'Pelé', par: 3 }, app.replace(TAGS_END, ''))).toThrow(/markers/);
   });
 });
 

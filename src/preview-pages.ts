@@ -1,8 +1,8 @@
 /*
  * Static pages for link previews. Preview crawlers (WhatsApp, iMessage, Slack…) ignore
  * everything after the #, so a shared #/daily/<date> link would only ever unfurl as the
- * home page. The build (scripts/previews.ts) writes d/<date>/index.html for each daily, with
- * that day's Open Graph tags, which sends people straight on to the game.
+ * home page. The build (scripts/previews.ts) writes d/<date>/index.html for each daily: the
+ * game's page with that day's Open Graph tags, which starts the game in place.
  *
  * Pure string building with no imports, so Node can load it by type stripping and vitest can
  * test it without data.
@@ -89,33 +89,34 @@ export function dailyDescription(p: Pick<DailyPage, 'name' | 'par'>): string {
   return `Connect ${p.name} to Justin Timberlake. Par ${p.par}.`;
 }
 
-/*
- * Preview crawlers that run scripts must not follow the redirect, or they'd unfurl the
- * home page instead. iMessage fetches previews with these tokens in its user agent. There's
- * no <meta http-equiv="refresh"> for the same reason: crawlers that don't run scripts can
- * still follow a refresh. Without scripts, people get a link to tap.
- */
-const CRAWLER_RE = 'facebookexternalhit|Facebot|Twitterbot';
+/** The markers in index.html around the tags each daily's page swaps for its own. */
+export const TAGS_START = '<!-- preview-tags -->';
+export const TAGS_END = '<!-- /preview-tags -->';
 
-/** The page for one daily: Open Graph and Twitter tags, then straight on to the game. */
-export function dailyPage(p: DailyPage): string {
+/**
+ * The page for one daily: the game's own index.html (`app`) with that day's title and Open
+ * Graph tags, so the game starts right here rather than after a redirect, a second page load
+ * that cost a phone about half a second. The first thing the page does is put the game's
+ * address in the address bar (no navigation), and a <base> makes its relative URLs, the
+ * bundle and the data, resolve from the site root as they do on the home page. Preview crawlers mostly
+ * don't run scripts, and the ones that do still read this page's tags.
+ */
+export function dailyPage(p: DailyPage, app: string): string {
   const path = pagePath(p.day, p.mode);
-  const target = rootPrefix(path) + dailyRoute(p.day, p.mode);
   const title = dailyTitle(p);
   const description = dailyDescription(p);
   const url = p.site + path;
   const image = p.site + imagePath(p.day);
   const alt = `Daily #${p.number}: a pink sticker reading ${p.name}`;
   const a = escapeHtml;
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+  const start = app.indexOf(TAGS_START);
+  const end = app.indexOf(TAGS_END);
+  if (start < 0 || end < start) throw new Error('index.html has lost its preview-tags markers');
+  if (!app.includes('<head>')) throw new Error('index.html has no <head>');
+  const tags = `${TAGS_START}
 <title>${a(title)}</title>
-<script>if (!/${CRAWLER_RE}/i.test(navigator.userAgent)) location.replace(${JSON.stringify(target)} + location.search);</script>
-<link rel="canonical" href="${a(url)}">
 <meta name="description" content="${a(description)}">
+<link rel="canonical" href="${a(url)}">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Six Degrees of Justin Timberlake">
 <meta property="og:title" content="${a(title)}">
@@ -130,18 +131,15 @@ export function dailyPage(p: DailyPage): string {
 <meta name="twitter:title" content="${a(title)}">
 <meta name="twitter:description" content="${a(description)}">
 <meta name="twitter:image" content="${a(image)}">
-<meta name="theme-color" content="#b9b4ff">
-<style>${PAGE_CSS}</style>
-</head>
-<body>
-<main>
-<h1>${a(title)}</h1>
-<p>${a(description)}</p>
-<p><a href="${a(target)}">Play the daily</a></p>
-</main>
-</body>
-</html>
-`;
+${TAGS_END}`;
+  // First in <head>, before any relative URL is read. The <base> points them at the site
+  // root from the start (the browser's preload scanner reads ahead of scripts, so the
+  // address change alone would come too late for it); the script then moves the address to
+  // the game's route, taking any ?vs= challenge code along.
+  const root = rootPrefix(path);
+  const head = `<base href="${root}">\n    <script>history.replaceState(null, '', ${JSON.stringify(dailyRoute(p.day, p.mode))} + location.search)</script>`;
+  const page = app.slice(0, start) + tags + app.slice(end + TAGS_END.length);
+  return page.replace('<head>', `<head>\n    ${head}`);
 }
 
 /** A daily page's URL path: [1] the site root, [2] the date, [3] "/hard" for hard mode. */
@@ -176,7 +174,7 @@ if (m) location.replace(m[1] + "#/daily/" + m[2] + (m[3] ? "/hard" : "") + locat
 `;
 }
 
-// Just enough of the game's look for the moment before the redirect (or without scripts).
+// Just enough of the game's look for 404.html's moment before its redirect (or without scripts).
 const PAGE_CSS =
   'body{margin:0;background:#b9b4ff radial-gradient(#a29cf7 2px,transparent 2px) 0 0/28px 28px;color:#111;font:500 18px/1.5 system-ui,sans-serif}' +
   'main{box-sizing:border-box;max-width:min(34em,calc(100% - 32px));margin:15vh auto;padding:24px;background:#fff;border:3px solid #111;border-radius:20px;box-shadow:6px 6px 0 #111}' +

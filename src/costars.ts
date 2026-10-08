@@ -128,7 +128,8 @@ export class CostarSearch {
     person: { id: Qid; films: FilmRef[] },
     banned: ReadonlySet<Qid>,
     private readonly load: FilmLoader,
-    private readonly concurrency = 4,
+    // Shards are small, so this is about latency, not bandwidth: HTTP/2 runs these side by side.
+    private readonly concurrency = 8,
   ) {
     this.index = new CostarIndex(person.id, banned);
     // Dedupe: a credit list can name the same film twice (e.g. two roles).
