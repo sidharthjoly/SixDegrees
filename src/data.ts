@@ -36,10 +36,24 @@ const files = new Map<string, Promise<unknown>>();
 export const loadMeta = () => once(files, 'meta', () => getJson<Meta>('meta.json')) as Promise<Meta>;
 export const loadSearch = () => once(files, 'search', () => getJson<SearchRow[]>('search.json')) as Promise<SearchRow[]>;
 
+/**
+ * Shards, least recently used first. A co-star search on a prolific actor touches 100+
+ * film shards (~100 KB of JSON each), so keep a bounded number rather than every shard
+ * seen this session.
+ */
+const shardCache = new Map<string, Promise<unknown>>();
+const MAX_SHARDS = 160;
+
 async function row<T>(kind: 'p' | 'f', id: Qid): Promise<T | undefined> {
   const { shards } = await loadMeta();
   const path = `${kind}/${id % shards}.json`;
-  const shard = (await once(files, path, () => getJson(path))) as Record<string, T>;
+  const cached = shardCache.get(path);
+  if (cached) {
+    shardCache.delete(path);
+    shardCache.set(path, cached);
+  }
+  const shard = (await once(shardCache, path, () => getJson(path))) as Record<string, T>;
+  while (shardCache.size > MAX_SHARDS) shardCache.delete(shardCache.keys().next().value!);
   return shard[id];
 }
 

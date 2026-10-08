@@ -1,5 +1,5 @@
 import { CostarSearch, type CostarHit } from '../costars';
-import { getFilm, getPerson, loadMeta, loader } from '../data';
+import { StaleDataError, getFilm, getPerson, loadMeta, loader } from '../data';
 import { keyCommand, keysWhileMounted } from '../keys';
 import { foldList } from '../lists';
 import { JT, dayNumber, filterByText, fold, grade, optimalPath, plural, reachIn, type Grade } from '../logic';
@@ -163,6 +163,19 @@ function renderPlay(scroll = false): void {
   if (scroll && panel.getBoundingClientRect().top > window.innerHeight * 0.6) panel.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
 }
 
+/**
+ * The co-star search counts a failed film and carries on, but a redeploy mid-game means
+ * every film will fail: show the reload prompt instead of a quietly shrinking search.
+ */
+async function loadFilmForSearch(id: Qid): Promise<Film> {
+  try {
+    return await getFilm(id);
+  } catch (err) {
+    if (err instanceof StaleDataError) renderError(err);
+    throw err;
+  }
+}
+
 /** Co-star searches by person and mode, kept so returning to someone doesn't refetch. */
 const searches = new Map<string, CostarSearch>();
 const MAX_SEARCHES = 12;
@@ -171,7 +184,7 @@ function costarSearch(g: Game, p: Person): CostarSearch {
   const key = `${p.id}:${g.mode}`;
   let s = searches.get(key);
   if (s) searches.delete(key);
-  else s = new CostarSearch(p, g.banned, getFilm);
+  else s = new CostarSearch(p, g.banned, loadFilmForSearch);
   // Re-insert so the map stays in least-recently-used order.
   searches.set(key, s);
   if (searches.size > MAX_SEARCHES) {

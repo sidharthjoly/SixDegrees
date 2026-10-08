@@ -1,12 +1,11 @@
 import { MAX_NAME_LENGTH, cleanName, compareResults, decodeChallenge, encodeChallenge, sideOf, type Challenge, type Reason, type Side } from '../challenge-code';
 import { getPerson } from '../data';
 import { dayNumber, plural, reachIn, shareText, type MoveSummary } from '../logic';
-import { href } from '../router';
 import type { Mode, Person, Qid } from '../types';
 import { h } from './dom';
 import type { Game } from './play';
 import type { ResultContext } from './result';
-import { siteBase } from './share';
+import { puzzleUrl } from './share';
 import { gradeSquares } from './squares';
 import { tracks, type ChainStep } from './tracks';
 
@@ -204,7 +203,9 @@ function challengeUrl(ctx: ResultContext, name: string): string | null {
     name: name || null,
   });
   if (!vs) return null;
-  return siteBase() + (ctx.day ? href({ name: 'daily', day: ctx.day, mode: ctx.mode, vs }) : href({ name: 'play', qid: ctx.start.id, mode: ctx.mode, vs }));
+  // puzzleUrl is the day's preview page in production (so the link unfurls in chats; it
+  // forwards ?vs= into the game) and a hash route otherwise; either way ?vs= goes last.
+  return `${puzzleUrl({ day: ctx.day, start: ctx.start.id, mode: ctx.mode })}?vs=${encodeURIComponent(vs)}`;
 }
 
 let formCount = 0;
