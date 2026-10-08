@@ -12,7 +12,8 @@ public/data/version.json names it. Vite compiles that version into the bundle, s
 page never mixes a new bundle with cached data files from an older build (or vice
 versa), and an unchanged rebuild keeps the same URLs.
 
-  meta.json        build stats, distance histograms, daily-challenge pool, hard-mode bans
+  meta.json        build stats, distance histograms, daily-challenge pool, hard-mode bans,
+                   JT's Bacon number
   search.json      [qid, name, sitelinks, dist, best-known film, hardDist, aliases?]
                    for people with enough sitelinks to be worth autocompleting
   search-top.json  the first SEARCH_TOP rows of search.json (the best known), which
@@ -44,6 +45,8 @@ OUT = ROOT / "public" / "data"
 
 JT = 43432
 RONALDO = 11571
+# The original six-degrees star. His distance to JT (JT's Bacon number) goes on the home page.
+KEVIN_BACON = 3454165
 SHARDS = 4096
 # Rows of search-top.json: enough for nearly every name people type first.
 SEARCH_TOP = 2000
@@ -332,6 +335,7 @@ def main() -> None:
             "hardBanned": [{"id": f, "title": films[f][0], "year": films[f][1]} for f in HARD_BANNED],
             "daily": daily,
             "jt": JT,
+            "bacon": dist.get(KEVIN_BACON),
             "shards": SHARDS,
         },
     )

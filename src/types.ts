@@ -29,6 +29,8 @@ export interface Meta {
   hardBanned: FilmRef[];
   daily: Qid[];
   jt: Qid;
+  /** JT's Bacon number: films between him and Kevin Bacon (null if they're not connected). */
+  bacon: number | null;
   shards: number;
 }
 

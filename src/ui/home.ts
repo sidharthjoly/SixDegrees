@@ -26,9 +26,11 @@ function ticker(meta: Meta): HTMLElement {
     `${meta.people.toLocaleString()} people`,
     `${meta.films.toLocaleString()} films`,
     `most are ${plural(medianDistance(meta), 'film')} from JT`,
+    meta.bacon != null && `JT’s Bacon number is ${meta.bacon}`,
     'a new daily every midnight',
     'hints show up in your share',
   ]
+    .filter((t): t is string => !!t)
     .map((t) => `★ ${t.toUpperCase()}`)
     .join(' ');
   // Two identical copies scroll by half their width, so the loop is seamless.
