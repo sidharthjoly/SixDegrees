@@ -106,3 +106,129 @@
   background: var(--pink);
   color: #111111;
 }
+
+/* ------------------------------------------------------------ picker (filter + options) */
+
+/* Options are buttons straight inside the listbox (no <li>), so the base rule that drops the
+   last divider doesn't reach them. */
+.options > .option:last-child,
+.opt-group > .option:last-child {
+  border-bottom: 0;
+}
+
+.opt-group + .opt-group {
+  margin-top: 10px;
+}
+
+.opt-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 10px 14px 6px;
+  border-bottom: 3px solid var(--line);
+}
+
+.opt-group-label {
+  font-family: var(--display);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.opt-aside {
+  font-size: 14px;
+  color: var(--card-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The keyboard highlight. Focus stays in the filter box, so the option draws its own ring,
+   and only while the panel has focus: a resting list shouldn't look pre-selected. */
+.panel:focus-within .option.active {
+  border-radius: 12px;
+  background: var(--hover);
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.panel:focus-within .option.is-jt.active {
+  background: var(--pink);
+  outline-offset: 2px;
+}
+
+/* Specific enough to keep its bottom edge against the last-child rule above. */
+.options .option.more {
+  justify-content: center;
+  gap: 10px;
+  margin-top: 6px;
+  border: 2px dashed var(--card-muted);
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.options .option.more .opt-meta {
+  font-weight: 500;
+}
+
+.pick-note {
+  margin: 8px 0 0;
+  padding: 0 14px;
+  font-size: 15px;
+  color: var(--card-muted);
+}
+
+/* One-line keyboard legend, desktop only (play.ts adds it for fine pointers). */
+.keys-legend {
+  margin: 8px 0 0;
+  padding: 0 6px;
+  font-size: 14px;
+  color: var(--card-muted);
+}
+
+.keys-legend > span {
+  white-space: nowrap;
+}
+
+.keys-legend kbd {
+  display: inline-block;
+  min-width: 1.7em;
+  margin: 0 2px;
+  padding: 0 5px;
+  border: 2px solid var(--card-ink);
+  border-bottom-width: 3px;
+  border-radius: 6px;
+  background: var(--field);
+  color: var(--card-ink);
+  font: 700 12px/1.5 var(--text);
+  text-align: center;
+}
+
+/* ------------------------------------------------------------ motion (none when reduced) */
+
+@media (prefers-reduced-motion: no-preference) {
+  .option.hinted.pulse {
+    animation: hint-pulse 0.7s ease-in-out 3;
+  }
+
+  .meters dd.bump {
+    animation: meter-tick 0.45s ease-out;
+  }
+}
+
+@keyframes hint-pulse {
+  50% {
+    outline-offset: -8px;
+    background: var(--hover);
+  }
+}
+
+@keyframes meter-tick {
+  0% {
+    transform: translateY(-40%);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(8%);
+    opacity: 1;
+  }
+}

@@ -17,7 +17,16 @@ export const GRADE_LABEL: Record<Grade, string> = { closer: '▲ closer', same: 
  * A path as a stack of chart entries. In play they're numbered in order (01, 02…) with a
  * dashed slot for the next film; on the result they count down to #1, the film with JT.
  */
-export function tracks(start: PersonRef, steps: ChainStep[], opts: { pending?: boolean; countdown?: boolean } = {}): HTMLElement {
+export function tracks(
+  start: PersonRef,
+  steps: ChainStep[],
+  opts: {
+    pending?: boolean;
+    countdown?: boolean;
+    /** Index of a step that just joined the list: it slides in and its grade jumps. */
+    fresh?: number;
+  } = {},
+): HTMLElement {
   const items: HTMLElement[] = [
     h(
       'li',
@@ -35,6 +44,7 @@ export function tracks(start: PersonRef, steps: ChainStep[], opts: { pending?: b
           class:
             'track' +
             (s.revealed ? ' revealed' : '') +
+            (i === opts.fresh ? ' fresh' : '') +
             (opts.countdown && last ? ' number-one' : '') +
             (opts.pending && last ? ' current' : ''),
         },

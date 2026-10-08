@@ -153,3 +153,115 @@
     font-size: 20px;
   }
 }
+
+/* ------------------------------------------------------------ chart movement */
+
+/* Only a card that just joined the setlist animates (play.ts marks it .fresh). It drops into
+   its slot, then its grade moves like a chart entry: ▲ climbs up a place, ▼ falls, ● holds. */
+@media (prefers-reduced-motion: no-preference) {
+  .track.fresh {
+    animation: track-in 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  }
+
+  .track.fresh .track-num {
+    animation: num-flip 0.45s 0.12s ease-out both;
+  }
+
+  .track.fresh .grade {
+    animation: 0.6s cubic-bezier(0.3, 1.5, 0.5, 1) 0.4s both;
+  }
+
+  .track.fresh .grade.closer {
+    animation-name: grade-climb;
+  }
+
+  .track.fresh .grade.further {
+    animation-name: grade-drop;
+  }
+
+  .track.fresh .grade.same {
+    animation-name: grade-hold;
+  }
+}
+
+@keyframes track-in {
+  from {
+    opacity: 0;
+    transform: translateY(-22px) scale(0.96);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(3px) scale(1.01);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes num-flip {
+  from {
+    transform: rotateX(90deg);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes grade-climb {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(-7px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes grade-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(5px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes grade-hold {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  to {
+    transform: none;
+  }
+}
+
+/* Star burst over the #1 card (ui/fx.ts): a fixed, click-through layer that adds no layout. */
+.fx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.fx-star {
+  position: absolute;
+  line-height: 1;
+  -webkit-text-stroke: 1.5px var(--line);
+  paint-order: stroke fill;
+  will-change: transform, opacity;
+}
