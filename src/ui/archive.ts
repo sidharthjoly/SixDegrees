@@ -1,6 +1,174 @@
-import { renderMessage } from './shell';
+import { getPerson, loadMeta } from '../data';
+import { archiveDays, formatDay } from '../days';
+import { dailyPick, dayKey, dayNumber, plural } from '../logic';
+import { href } from '../router';
+import { isUsable } from '../scores';
+import { loadDaily, type DailyRecord } from '../storage';
+import type { Mode, Qid } from '../types';
+import { h, type Child } from './dom';
+import { app, isCurrent, renderLoading, renderMessage, topBar } from './shell';
+import { describeMoves, gradeSquares } from './squares';
 
-/** Past dailies. Placeholder until the archive feature lands. */
-export async function renderArchive(_gen: number): Promise<void> {
-  renderMessage('Past dailies', 'Coming soon.');
+/**
+ * Past dailies, newest first, each linking to its normal and hard game. Who each day starts
+ * from costs a person-shard fetch, so names load only for rows near the viewport, a few
+ * fetches at a time.
+ */
+
+/** Person fetches in flight at once: enough to fill a screen quickly without a request storm. */
+const CONCURRENCY = 3;
+/** Rows loaded up front when IntersectionObserver is missing (very old browsers). */
+const NO_OBSERVER_ROWS = 20;
+
+export async function renderArchive(gen: number): Promise<void> {
+  renderLoading();
+  const meta = await loadMeta();
+  if (!isCurrent(gen)) return;
+  const today = dayKey(new Date());
+  const days = archiveDays(today);
+  if (days.length === 0) {
+    renderMessage('No dailies yet', 'Dailies start on 8 October 2026. Check your device’s date if that has passed.');
+    return;
+  }
+  document.title = 'Past dailies · Six Degrees';
+  const pick = (day: string) => dailyPick(meta.daily, day);
+  const rows = days.map((day) => row(day, today, pick));
+
+  app.replaceChildren(
+    topBar(),
+    h(
+      'header',
+      { class: 'page-head' },
+      h('h1', { class: 'page-title' }, 'Past dailies'),
+      h('p', { class: 'page-lede' }, 'Every daily so far, newest first. Play any you missed: late finishes are marked, and don’t count toward your streak.'),
+      h('div', { class: 'row page-links' }, h('a', { href: href({ name: 'stats' }), class: 'btn' }, 'Your charts')),
+    ),
+    h('ol', { class: 'archive', 'aria-label': 'Dailies, newest first' }, ...rows.map((r) => r.el)),
+  );
+  lazyLoad(rows, gen, pick);
+}
+
+interface Row {
+  day: string;
+  el: HTMLElement;
+  /** Filled with the start person and par once loaded. */
+  who: HTMLElement;
+  hard: HTMLElement;
+}
+
+function row(day: string, today: string, pick: (day: string) => Qid): Row {
+  const n = dayNumber(day);
+  const isToday = day === today;
+  const who = h('p', { class: 'arc-who muted' }, 'Loading…');
+  const hard = modeLink(day, 'hard', played(day, 'hard', today, pick), n);
+  const el = h(
+    'li',
+    { class: 'card arc-row' + (isToday ? ' today' : '') },
+    h(
+      'div',
+      { class: 'arc-head' },
+      h('h2', { class: 'arc-num' }, `Daily #${n}`),
+      h('span', { class: 'arc-date' }, formatDay(day, today)),
+      isToday && h('span', { class: 'arc-today' }, 'Today'),
+    ),
+    who,
+    h('div', { class: 'arc-modes' }, modeLink(day, 'normal', played(day, 'normal', today, pick), n), hard),
+  );
+  return { day, el, who, hard };
+}
+
+/** The saved finish for that day and mode, if it was for the start that day has now. */
+function played(day: string, mode: Mode, today: string, pick: (day: string) => Qid): DailyRecord | null {
+  const rec = loadDaily(day, mode);
+  // Picking is a hash over the whole pool, so only pay for it when there's a record to check.
+  return rec && isUsable(rec, today) && rec.start === pick(day) ? rec : null;
+}
+
+function modeLink(day: string, mode: Mode, rec: DailyRecord | null, n: number): HTMLElement {
+  const modeName = mode === 'hard' ? 'Hard' : 'Normal';
+  let status: string;
+  let detail: Child[];
+  if (!rec) {
+    status = 'not played';
+    detail = [h('span', { class: 'arc-status' }, 'Not played'), h('span', { class: 'arc-go', 'aria-hidden': 'true' }, 'Play ›')];
+  } else {
+    const score = rec.gaveUp ? `gave up after ${plural(rec.moves.length, 'film')}` : plural(rec.moves.length, 'film');
+    status = score + (rec.moves.length ? `: ${describeMoves(rec.moves)}` : '') + (rec.late ? ', played late' : '');
+    detail = [
+      rec.moves.length > 0 && gradeSquares(rec.moves, { small: true, hidden: true }),
+      h('span', { class: 'arc-status' }, rec.gaveUp ? 'Gave up' : plural(rec.moves.length, 'film')),
+      rec.late && h('span', { class: 'arc-late' }, 'Late'),
+    ];
+  }
+  return h(
+    'a',
+    {
+      class: 'arc-mode' + (mode === 'hard' ? ' hard' : '') + (rec ? ' done' : ''),
+      href: href({ name: 'daily', day, mode, vs: null }),
+      // The squares are hidden from screen readers, so the label says what they show.
+      'aria-label': `${modeName}, Daily #${n}: ${status}`,
+    },
+    h('span', { class: 'arc-mode-name' }, modeName),
+    h('span', { class: 'arc-detail' }, ...detail),
+  );
+}
+
+/** Fill in each row's start person when it comes near the viewport. */
+function lazyLoad(rows: Row[], gen: number, pick: (day: string) => Qid): void {
+  const queue: Row[] = [];
+  let active = 0;
+
+  const load = async (r: Row) => {
+    try {
+      const person = await getPerson(pick(r.day));
+      if (!isCurrent(gen)) return;
+      r.who.classList.remove('muted');
+      const hardPar = person.hard.dist;
+      r.who.replaceChildren(
+        h('span', { class: 'arc-name' }, person.name),
+        h('span', { class: 'arc-par' }, ` · par ${person.normal.dist}`, hardPar === Infinity ? '' : `, hard ${hardPar}`),
+      );
+      // Some starts only reach Justin through films hard mode bans.
+      if (hardPar === Infinity) r.hard.replaceWith(h('span', { class: 'arc-mode off' }, h('span', { class: 'arc-mode-name' }, 'Hard'), h('span', { class: 'arc-detail' }, 'No hard-mode path')));
+    } catch {
+      if (isCurrent(gen)) r.who.textContent = 'Couldn’t load who this day starts from.';
+    }
+  };
+
+  const pump = () => {
+    while (active < CONCURRENCY && queue.length > 0 && isCurrent(gen)) {
+      const r = queue.shift()!;
+      active++;
+      void load(r).finally(() => {
+        active--;
+        pump();
+      });
+    }
+  };
+
+  if (typeof IntersectionObserver === 'undefined') {
+    queue.push(...rows.slice(0, NO_OBSERVER_ROWS));
+    pump();
+    return;
+  }
+
+  const byEl = new Map(rows.map((r) => [r.el as Element, r]));
+  const io = new IntersectionObserver(
+    (entries) => {
+      if (!isCurrent(gen)) {
+        io.disconnect();
+        return;
+      }
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        io.unobserve(e.target);
+        const r = byEl.get(e.target);
+        if (r) queue.push(r);
+      }
+      pump();
+    },
+    // Start a little before rows scroll into view, so names are usually there on arrival.
+    { rootMargin: '300px 0px' },
+  );
+  for (const r of rows) io.observe(r.el);
 }

@@ -10,6 +10,8 @@ import './styles/result.css';
 import './styles/archive.css';
 import './styles/stats.css';
 import './styles/share.css';
+import './styles/squares.css';
+import './styles/challenge.css';
 import { loadMeta } from './data';
 import { dailyPick, dayKey, isPlayableDay } from './logic';
 import { parseRoute } from './router';

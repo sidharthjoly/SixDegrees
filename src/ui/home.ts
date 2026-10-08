@@ -235,12 +235,18 @@ function histogram(meta: Meta): HTMLElement {
     h('div', { class: 'plot', style: `grid-template-columns:repeat(${rows.length},1fr)`, role: 'img', 'aria-label': 'Column chart of people by number of films from Justin Timberlake' }, ...cols),
     h('p', { class: 'axis-label' }, 'Films from Justin Timberlake'),
     tip,
+    // A table won't shrink to the 1px sr-only box, so hide a wrapper instead; otherwise
+    // the page scrolls sideways on phones.
     h(
-      'table',
+      'div',
       { class: 'sr-only' },
-      h('caption', null, 'People by number of films from Justin Timberlake'),
-      h('thead', null, h('tr', null, h('th', null, 'Films'), h('th', null, 'People'))),
-      h('tbody', null, ...rows.map(([d, n]) => h('tr', null, h('td', null, d), h('td', null, n.toLocaleString())))),
+      h(
+        'table',
+        null,
+        h('caption', null, 'People by number of films from Justin Timberlake'),
+        h('thead', null, h('tr', null, h('th', null, 'Films'), h('th', null, 'People'))),
+        h('tbody', null, ...rows.map(([d, n]) => h('tr', null, h('td', null, d), h('td', null, n.toLocaleString())))),
+      ),
     ),
   );
 }

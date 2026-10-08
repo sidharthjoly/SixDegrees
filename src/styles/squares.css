@@ -1,0 +1,67 @@
+/* Grade squares: a game's moves as ▲ ● ▼ tiles (challenge banner, comparison, archive). */
+
+.squares {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  vertical-align: middle;
+}
+
+.sq {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid #111111;
+  border-radius: 6px;
+  /* The fills are bright in both themes, so the symbol stays dark for contrast. */
+  color: #111111;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.sq.closer {
+  background: var(--closer);
+}
+
+.sq.same {
+  background: var(--same);
+}
+
+.sq.further {
+  background: var(--further);
+}
+
+/* Hinted moves: the same dashed pink ring as a hinted option in play, plus a bulb. */
+.sq.hinted {
+  outline: 2px dashed var(--pink);
+  outline-offset: 1px;
+}
+
+.sq.hinted::after {
+  content: '💡';
+  position: absolute;
+  top: -9px;
+  right: -8px;
+  font-size: 12px;
+}
+
+.squares.small {
+  gap: 6px;
+}
+
+.squares.small .sq {
+  width: 20px;
+  height: 20px;
+  border-width: 2px;
+  border-radius: 5px;
+  font-size: 10px;
+}
+
+.squares.small .sq.hinted::after {
+  top: -8px;
+  right: -7px;
+  font-size: 10px;
+}

@@ -1,1 +1,155 @@
-/* Archive of past dailies. */
+/* Archive of past dailies. The page header styles live in stats.css. */
+
+.archive {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr));
+  gap: 20px 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.arc-row {
+  margin: 0;
+  padding: 16px;
+}
+
+.arc-row.today {
+  background: var(--soft);
+}
+
+.arc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.card .arc-num {
+  margin: 0;
+  font-size: 16px;
+}
+
+.arc-date {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.arc-today {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #111111;
+  color: var(--lime);
+  font-family: var(--display);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.arc-who {
+  min-height: 1.5em;
+  margin: 6px 0 12px;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.arc-name {
+  font-weight: 700;
+}
+
+.arc-par {
+  font-weight: 600;
+  color: var(--card-muted);
+}
+
+.arc-modes {
+  display: grid;
+  gap: 10px;
+}
+
+.arc-mode {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 10px 14px;
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  background: var(--field);
+  color: var(--card-ink);
+  box-shadow: 3px 3px 0 var(--shadow);
+  text-decoration: none;
+}
+
+a.arc-mode:hover {
+  background: var(--hover);
+}
+
+a.arc-mode:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--shadow);
+}
+
+/* Mode chips match the play screen's pills: black for normal, pink for hard. */
+.arc-mode-name {
+  flex: none;
+  min-width: 5.8em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #111111;
+  color: var(--lime);
+  font-family: var(--display);
+  font-size: 11px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.arc-mode.hard .arc-mode-name,
+.arc-mode.off .arc-mode-name {
+  background: var(--pink);
+  color: #111111;
+}
+
+.arc-detail {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+  /* Room for hint badges on the squares. */
+  padding-top: 3px;
+  font-weight: 700;
+}
+
+.arc-mode:not(.done) .arc-status {
+  color: var(--card-muted);
+  font-weight: 600;
+}
+
+.arc-go {
+  margin-left: auto;
+  font-weight: 700;
+}
+
+.arc-late {
+  padding: 1px 8px;
+  border: 2px solid var(--card-ink);
+  border-radius: 999px;
+  font-family: var(--display);
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+}
+
+.arc-mode.off {
+  border-style: dashed;
+  box-shadow: none;
+  background: transparent;
+  color: var(--card-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  a.arc-mode:active {
+    transform: none;
+  }
+}

@@ -1,1 +1,210 @@
-/* "Your charts": streaks and score history. */
+/* "Your charts": streaks and score history. The page header is shared with the archive. */
+
+/* ------------------------------------------------------------ page header (stats + archive) */
+
+.page-head {
+  padding-top: 16px;
+  margin-bottom: 26px;
+}
+
+.page-title {
+  margin: 0 0 12px;
+  color: #ffffff;
+  font-family: var(--display);
+  font-size: clamp(26px, 6vw, 46px);
+  font-weight: 400;
+  line-height: 1.05;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  text-shadow:
+    -2px -2px 0 #111111,
+    2px -2px 0 #111111,
+    -2px 2px 0 #111111,
+    2px 2px 0 #111111,
+    4px 4px 0 #111111;
+}
+
+.page-lede {
+  max-width: 36em;
+  font-size: 17px;
+}
+
+/* ------------------------------------------------------------ streak badge (home daily card) */
+
+.streak-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-bottom: 12px;
+  padding: 0 16px;
+  border: 3px solid var(--line);
+  border-radius: 999px;
+  /* Card-coloured, so it doesn't read as a second "Play" button next to the lime one. */
+  background: var(--card);
+  color: var(--card-ink);
+  box-shadow: 3px 3px 0 var(--shadow);
+  font-family: var(--display);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.streak-badge [aria-hidden] {
+  color: var(--pink);
+  font-size: 16px;
+}
+
+.streak-badge:hover {
+  background: var(--lime);
+  color: #111111;
+}
+
+/* ------------------------------------------------------------ stat tiles */
+
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+  margin: 16px 0 14px;
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--card);
+  color: var(--card-ink);
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+
+.stat-tile dt {
+  padding: 8px 12px 6px;
+  font-family: var(--display);
+  font-size: 11px;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.stat-tile dd {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  margin: 0;
+}
+
+.stat-value {
+  padding: 6px 12px;
+  background: var(--block);
+  color: var(--block-ink);
+  font-family: var(--display);
+  font-size: 30px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-tile.hot .stat-value {
+  background: var(--pink);
+  color: #111111;
+}
+
+.stat-tile.hot .stat-value::after {
+  content: ' ★';
+  font-size: 0.6em;
+  vertical-align: 0.35em;
+}
+
+.stat-detail {
+  padding: 6px 12px 10px;
+  font-size: 14px;
+  color: var(--card-muted);
+}
+
+.stat-tiles.small {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.stat-tiles.small .stat-value {
+  font-size: 22px;
+}
+
+.stats-note {
+  font-size: 14px;
+}
+
+/* ------------------------------------------------------------ score chart */
+
+/* Columns, caps, bars and the tip come from the home page chart (home.css). */
+.score-chart .ticks {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-top: 8px;
+  font-family: var(--display);
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.score-chart .axis-label {
+  margin-top: 10px;
+}
+
+/* Hatched, so "gave up" reads as different from a score even before the label. */
+.score-chart .bar-fill.gave-up {
+  background: repeating-linear-gradient(135deg, var(--pink) 0 6px, var(--card) 6px 10px);
+}
+
+/* Keep home.css's hover/focus highlight, which the hatching above would otherwise override. */
+.score-chart .col:is(:hover, :focus-visible) .bar-fill.gave-up {
+  background: var(--lime);
+}
+
+.score-chart.small {
+  margin-top: 18px;
+}
+
+.score-chart.small h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 400;
+  text-transform: uppercase;
+}
+
+.score-chart.small .plot {
+  height: 120px;
+}
+
+.stats-hard h2 {
+  font-size: 15px;
+}
+
+.stats-hard a {
+  font-weight: 700;
+}
+
+@media (max-width: 560px) {
+  .page-title {
+    text-shadow:
+      -1.5px -1.5px 0 #111111,
+      1.5px -1.5px 0 #111111,
+      -1.5px 1.5px 0 #111111,
+      1.5px 1.5px 0 #111111,
+      3px 3px 0 #111111;
+  }
+
+  .stat-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stat-value {
+    font-size: 24px;
+  }
+
+  .score-chart .ticks {
+    font-size: 10px;
+  }
+}

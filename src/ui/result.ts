@@ -72,6 +72,9 @@ export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): P
   const ctx: ResultContext = { day: g.day, mode: g.mode, start: g.start, par, moves: g.moves, gaveUp, revealed, best, text, vs: g.vs };
 
   const yours: ChainStep[] = [...g.moves, ...revealed.map((s) => ({ ...s, revealed: true }))];
+  const panel = challengePanel(ctx);
+  // A friend's challenge shows your countdown beside theirs, so don't repeat it below.
+  const compared = !!panel?.querySelector('.vs-cols');
   app.replaceChildren(
     topBar(),
     h(
@@ -82,14 +85,15 @@ export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): P
       h('p', { class: 'score' }, h('span', { class: 'emoji' }, emojiRow(moves)), ' ', gaveUp ? `${plural(n, 'film')} played, par ${par}` : `${plural(n, 'film')} · par ${par}`),
       h('div', { class: 'row' }, shareActions(ctx), h('button', { class: 'btn', type: 'button', onclick: () => void randomStart(g.mode) }, 'Random star'), h('a', { href: '#/', class: 'btn' }, 'Home')),
     ),
-    challengePanel(ctx) ?? '',
+    panel ?? '',
     h(
       'div',
       { class: 'result-cols' },
-      h('section', null, h('h2', { class: 'section-label' }, gaveUp ? 'Your countdown, finished for you' : 'Your countdown'), tracks(g.start, yours, { countdown: true })),
+      compared ? null : h('section', null, h('h2', { class: 'section-label' }, gaveUp ? 'Your countdown, finished for you' : 'Your countdown'), tracks(g.start, yours, { countdown: true })),
       gaveUp || n > par ? h('section', null, h('h2', { class: 'section-label' }, `Shortest path · ${plural(par, 'film')}`), tracks(g.start, best, { countdown: true })) : null,
     ),
   );
   window.scrollTo({ top: 0 });
+  // The first #1 card on the page is always the player's own (theirs comes second).
   if (!gaveUp) celebrate(app.querySelector<HTMLElement>('.track.number-one') ?? app);
 }
