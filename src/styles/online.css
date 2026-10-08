@@ -30,7 +30,7 @@
 /* ------------------------------------------------------------ forms */
 
 .text-field {
-  flex: 1 1 200px;
+  flex: none;
   min-width: 0;
   width: 100%;
   min-height: 50px;
@@ -63,8 +63,22 @@
   gap: 12px;
 }
 
+/* Beside a button the field takes the room; stacked in a form (a flex column) it keeps its
+   own height, or the flex basis would make it 200px tall. */
+.form-row .text-field {
+  flex: 1 1 200px;
+}
+
 .form-row .btn {
   flex: 0 1 auto;
+}
+
+.group-form .row {
+  align-items: center;
+}
+
+.group-form .link-btn {
+  margin: 0;
 }
 
 .form-status {

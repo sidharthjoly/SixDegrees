@@ -20,7 +20,7 @@ import { loadPlayerName, savePlayerName } from '../storage';
 import type { Mode } from '../types';
 import { h, type Child } from './dom';
 import { siteBase } from './share';
-import { app, go, isCurrent, renderMessage, topBar } from './shell';
+import { app, go, isCurrent, onLeave, renderMessage, topBar } from './shell';
 
 /**
  * Groups: a private leaderboard for a group chat. Someone starts one and shares its link;
@@ -108,6 +108,7 @@ function startForm(): HTMLElement {
   const nameInput = h('input', { id: `group-you-${id}`, class: 'text-field', type: 'text', maxlength: String(MAX_NAME_LENGTH), placeholder: 'What the board calls you', autocomplete: 'nickname', value: cleanName(loadPlayerName()) });
   const status = h('p', { class: 'form-status', role: 'status' });
   const submit = h('button', { class: 'btn primary', type: 'submit' }, 'Start a group');
+  const cancel = h('button', { class: 'link-btn', type: 'button' }, 'Cancel');
   const form = h(
     'form',
     { class: 'group-form' },
@@ -115,7 +116,7 @@ function startForm(): HTMLElement {
     groupInput,
     h('label', { class: 'label', for: nameInput.id }, 'Your name'),
     nameInput,
-    h('div', { class: 'row' }, submit),
+    h('div', { class: 'row' }, submit, cancel),
     status,
   );
   form.addEventListener('submit', async (e) => {
@@ -136,7 +137,36 @@ function startForm(): HTMLElement {
       submit.disabled = false;
     }
   });
-  return h('details', { class: 'group-start' }, h('summary', { class: 'btn' }, '+ Start a group'), form);
+  const summary = h('summary', { class: 'btn' }, '+ Start a group');
+  const details = h('details', { class: 'group-start' }, summary, form);
+
+  // Open, the form folds away again with Cancel, Esc, or a tap anywhere outside it. What was
+  // typed stays for next time.
+  const close = (refocus: boolean) => {
+    details.open = false;
+    status.textContent = '';
+    if (refocus) summary.focus();
+  };
+  const onOutside = (e: PointerEvent) => {
+    if (!details.contains(e.target as Node)) close(false);
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') close(true);
+  };
+  const stopListening = () => {
+    document.removeEventListener('pointerdown', onOutside);
+    document.removeEventListener('keydown', onKey);
+  };
+  details.addEventListener('toggle', () => {
+    if (details.open) {
+      document.addEventListener('pointerdown', onOutside);
+      document.addEventListener('keydown', onKey);
+      groupInput.focus();
+    } else stopListening();
+  });
+  cancel.addEventListener('click', () => close(true));
+  onLeave(stopListening);
+  return details;
 }
 
 // ------------------------------------------------------------------ group page

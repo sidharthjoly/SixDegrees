@@ -149,13 +149,78 @@ function howTo(meta: Meta): HTMLElement {
   );
 }
 
-const QUICK_PICKS: [Qid, string][] = [
-  [11571, 'Cristiano Ronaldo'],
-  [615, 'Lionel Messi'],
-  [3454165, 'Kevin Bacon'],
+/**
+ * Stars to start from, five drawn at random on each visit: household names, all at least two
+ * films from JT (his own co-stars would be one-move games).
+ */
+const STAR_PICKS: [Qid, string][] = [
+  [38111, 'Leonardo DiCaprio'],
+  [873, 'Meryl Streep'],
+  [2263, 'Tom Hanks'],
+  [35332, 'Brad Pitt'],
+  [34436, 'Scarlett Johansson'],
+  [1924847, 'Margot Robbie'],
+  [193815, 'Ryan Gosling'],
+  [189489, 'Zendaya'],
+  [43416, 'Keanu Reeves'],
+  [42101, 'Denzel Washington'],
   [37876, 'Natalie Portman'],
-  [9535, 'Shah Rukh Khan'],
+  [3454165, 'Kevin Bacon'],
+  [37079, 'Tom Cruise'],
+  [40096, 'Will Smith'],
+  [189490, 'Jennifer Lawrence'],
+  [19877770, 'Timothée Chalamet'],
+  [22277803, 'Florence Pugh'],
+  [14752155, 'Pedro Pascal'],
+  [165219, 'Robert Downey Jr.'],
+  [37175, 'Johnny Depp'],
+  [37459, 'Nicole Kidman'],
+  [36301, 'Anne Hathaway'],
+  [13909, 'Angelina Jolie'],
+  [49561909, 'Sydney Sweeney'],
+  [192682, 'Ryan Reynolds'],
+  [129591, 'Hugh Jackman'],
+  [41163, 'Al Pacino'],
+  [36949, 'Robert De Niro'],
+  [81328, 'Harrison Ford'],
+  [45772, 'Christian Bale'],
+  [175535, 'Matt Damon'],
+  [32522, 'Jennifer Aniston'],
+  [40791, 'Sandra Bullock'],
+  [39476, 'Emma Watson'],
+  [42786, 'Audrey Hepburn'],
+  [4616, 'Marilyn Monroe'],
+  [40504, 'Jim Carrey'],
+  [36970, 'Jackie Chan'],
+  [16397, 'Bruce Lee'],
+  [2685, 'Arnold Schwarzenegger'],
+  [40026, 'Sylvester Stallone'],
+  [2023710, 'Tom Holland'],
+  [38119, 'Daniel Radcliffe'],
+  [214289, 'Michelle Yeoh'],
+  [40572, 'Heath Ledger'],
+  [185654, 'Gal Gadot'],
+  [20882479, 'Anya Taylor-Joy'],
+  [21738166, 'Jenna Ortega'],
+  [185140, 'Joaquin Phoenix'],
+  [80046, 'Charlize Theron'],
+  [42581, 'Keira Knightley'],
+  [1033016, 'Halle Berry'],
+  [126599, 'Kristen Stewart'],
+  [36767, 'Robert Pattinson'],
+  [54314, 'Chris Hemsworth'],
+  [4547, 'Daniel Craig'],
 ];
+
+/** `n` different stars from the list, in random order. */
+function pickStars(n: number, random = Math.random): [Qid, string][] {
+  const pool = [...STAR_PICKS];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, n);
+}
 
 function startCard(): HTMLElement {
   const results = h('ul', { class: 'results', id: 'search-results' });
@@ -187,7 +252,7 @@ function startCard(): HTMLElement {
   const input = h('input', {
     type: 'search',
     id: 'start-search',
-    placeholder: 'Any name, e.g. Pelé',
+    placeholder: 'Any name, e.g. Tom Hanks',
     autocomplete: 'off',
     spellcheck: 'false',
     'aria-controls': 'search-results',
@@ -210,13 +275,13 @@ function startCard(): HTMLElement {
   return h(
     'section',
     { class: 'card' },
-    h('label', { class: 'label', for: 'start-search' }, 'Call the request line'),
+    h('label', { class: 'label', for: 'start-search' }, 'Free play: pick any star'),
     input,
     results,
     h(
       'div',
       { class: 'chips' },
-      ...QUICK_PICKS.map(([id, name]) => h('a', { class: 'chip', href: playHref(id) }, name)),
+      ...pickStars(5).map(([id, name]) => h('a', { class: 'chip', href: playHref(id) }, name)),
       h('button', { class: 'chip shuffle', type: 'button', onclick: () => void randomStart() }, 'Shuffle'),
     ),
   );
