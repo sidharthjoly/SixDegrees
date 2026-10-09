@@ -12,6 +12,8 @@ export interface DailyRecord {
   mode: Mode;
   /** Who was played, so a data rebuild that changes the pick can't pair a new name with an old score. */
   start: Qid;
+  /** The star daily's star, for the same reason. */
+  target?: Qid;
   par: number;
   moves: MoveSummary[];
   /** [film, person] for each move the player made (not the revealed rest after giving up). */
@@ -37,7 +39,7 @@ function store(): Storage | null {
 
 function isRecord(x: unknown): x is DailyRecord {
   const r = x as DailyRecord;
-  return !!r && r.v === 2 && typeof r.day === 'string' && (r.mode === 'normal' || r.mode === 'hard') && Array.isArray(r.moves);
+  return !!r && r.v === 2 && typeof r.day === 'string' && (r.mode === 'normal' || r.mode === 'hard' || r.mode === 'star') && Array.isArray(r.moves);
 }
 
 export function loadDaily(day: string, mode: Mode): DailyRecord | null {
@@ -50,9 +52,10 @@ export function loadDaily(day: string, mode: Mode): DailyRecord | null {
   }
 }
 
-/** Saves the first finish of a day and mode for that start; later replays are ignored. */
+/** Saves the first finish of a day and mode for that start (and star); later replays are ignored. */
 export function saveDaily(rec: DailyRecord): void {
-  if (loadDaily(rec.day, rec.mode)?.start === rec.start) return;
+  const old = loadDaily(rec.day, rec.mode);
+  if (old?.start === rec.start && old.target === rec.target) return;
   try {
     store()?.setItem(keyFor(rec.day, rec.mode), JSON.stringify(rec));
   } catch {
@@ -77,6 +80,27 @@ export function savePlayerName(name: string): void {
     else store()?.removeItem(NAME_KEY);
   } catch {
     // Blocked storage: the name just isn't remembered.
+  }
+}
+
+const TARGET_KEY = 'sixdeg:target';
+
+/** The other star free play is heading for, or null for JT. Callers check it's still one of the stars. */
+export function loadTarget(): Qid | null {
+  try {
+    const id = Number(store()?.getItem(TARGET_KEY));
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveTarget(id: Qid | null): void {
+  try {
+    if (id) store()?.setItem(TARGET_KEY, String(id));
+    else store()?.removeItem(TARGET_KEY);
+  } catch {
+    // Blocked storage: free play just starts out heading for JT next time.
   }
 }
 

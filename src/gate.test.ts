@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { forgetSiteData, handleWrite, sourceAddress, sourceKey, WRITES, type GateEnv } from './gate';
-import { JT } from './logic';
-import { A, F1, F2, START, route, siteFile } from './route-fixture';
+import { JT, STAR_CANDIDATES, dayOfNumber, starOfDay } from './logic';
+import { MAX_CHECKED_STEPS } from './route-check';
+import { A, B, F1, F2, F3, F6, FAR, START, route, siteFile } from './route-fixture';
 
 describe('sourceAddress', () => {
   it('keeps IPv4 addresses as they are', () => {
@@ -57,8 +58,8 @@ describe('handleWrite', () => {
       body: init.method === 'GET' ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
     });
   /** The site's data files (route-fixture.ts), and Supabase answering `status` and `body`. */
-  const answering = (status: number, body: string) =>
-    vi.fn<typeof fetch>(async (input) => siteFile(String(input), ORIGIN) ?? new Response(status === 204 ? null : body, { status }));
+  const answering = (status: number, body: string, stars = true) =>
+    vi.fn<typeof fetch>(async (input) => siteFile(String(input), ORIGIN, [START], stars) ?? new Response(status === 204 ? null : body, { status }));
   /** What went to Supabase: the function and the arguments. */
   const sentTo = (upstream: ReturnType<typeof answering>) =>
     upstream.mock.calls.filter(([url]) => String(url).startsWith(SUPABASE)).map(([url, init]) => ({ fn: String(url).slice(SUPABASE.length), args: JSON.parse(init?.body as string), init }));
@@ -224,6 +225,64 @@ describe('handleWrite', () => {
       expect(upstream.mock.calls.some(([url]) => String(url).startsWith(SUPABASE))).toBe(false);
     });
 
+    it('in the star daily head for the day’s star, as the game picks it', async () => {
+      const upstream = answering(204, '');
+      const star = { ...result, p_mode: 'star', p_par: 9, p_route: route([F3, B], [F6, FAR]) };
+      expect((await handleWrite(call('sixdegrees_submit', star), env, upstream)).status).toBe(204);
+      expect(sentTo(upstream)[0].args).toMatchObject({ p_mode: 'star', p_par: 2, p_films: 2, p_first_film: F3 });
+      // Ending at JT is a JT daily's finish, not this one's.
+      const res = await handleWrite(call('sixdegrees_submit', { ...star, p_route: result.p_route }), env, upstream);
+      expect(res.status).toBe(400);
+      expect(sentTo(upstream)).toHaveLength(1);
+    });
+
+    it('in the star daily are refused while the site’s data has no other stars', async () => {
+      const upstream = answering(204, '', false);
+      const res = await handleWrite(call('sixdegrees_submit', { ...result, p_mode: 'star', p_route: route([F3, B], [F6, FAR]) }), env, upstream);
+      expect(res.status).toBe(400);
+      expect((await res.json()).code).toBe('22023');
+      expect(sentTo(upstream)).toEqual([]);
+    });
+
+    it('stay within a Worker’s 50 requests for the longest star route it checks, every star it may look at included', async () => {
+      // START -f1- 1 -f2- 2 … -f40- 40, the star; everyone in a shard of their own, and the
+      // other stars all one film from START, ranked so the daily looks at every one first.
+      const SHARDS = 64;
+      const id = (i: number) => 1000 + i;
+      const film = (i: number) => 5000 + i;
+      const star = id(MAX_CHECKED_STEPS);
+      const near = Array.from({ length: STAR_CANDIDATES - 1 }, (_, i) => 900 + i);
+      const stars = [...near, star];
+      const distance = async (s: number) => (s === star ? MAX_CHECKED_STEPS : 1);
+      let day = '';
+      for (let n = 1; !day; n++) {
+        const asked: number[] = [];
+        const pick = await starOfDay(stars, dayOfNumber(n), id(0), (s) => (asked.push(s), distance(s)));
+        if (pick?.id === star && asked.length === STAR_CANDIDATES) day = dayOfNumber(n);
+      }
+      const credits = (i: number) => [i, i + 1].filter((f) => f >= 1 && f <= MAX_CHECKED_STEPS).map((f) => [film(f), `Film ${f}`, 2000, 1]);
+      const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+      const upstream = vi.fn<typeof fetch>(async (input) => {
+        const url = String(input);
+        if (url === `${ORIGIN}/data/version.json`) return json({ version: 'test' });
+        if (url.endsWith('/meta.json')) return json({ daily: [id(0)], hardBanned: [], shards: SHARDS, targets: stars.map((s) => ({ id: s, name: `Star ${s}`, film: '' })), targetShards: SHARDS });
+        const p = /\/p\/(\d+)\.json$/.exec(url);
+        if (p) {
+          const i = (Number(p[1]) - 1000 + SHARDS * 100) % SHARDS;
+          return json({ [id(i)]: [`P${i}`, 1, 2, 0, 0, credits(i), 2, 0, 0] });
+        }
+        const t = /\/t\/(\d+)\/\d+\.json$/.exec(url);
+        if (t) return json({ [id(0)]: [await distance(Number(t[1])), film(1), id(1)] });
+        return new Response(null, { status: 204 });
+      });
+      const steps = Array.from({ length: MAX_CHECKED_STEPS }, (_, i): [number, number] => [film(i + 1), id(i + 1)]);
+      const res = await handleWrite(call('sixdegrees_submit', { ...result, p_day: day, p_mode: 'star', p_route: route(...steps) }), env, upstream);
+      expect(res.status).toBe(204);
+      expect(sentTo(upstream)[0].args).toMatchObject({ p_par: MAX_CHECKED_STEPS, p_films: MAX_CHECKED_STEPS, p_gave_up: false });
+      expect(upstream.mock.calls.filter(([url]) => String(url).includes('/t/'))).toHaveLength(STAR_CANDIDATES);
+      expect(upstream.mock.calls.length).toBeLessThanOrEqual(50);
+    });
+
     it('read the data once and keep it for the next', async () => {
       const upstream = answering(204, '');
       await handleWrite(call('sixdegrees_submit', result), env, upstream);
@@ -267,6 +326,24 @@ describe('handleWrite', () => {
       const away = await handleWrite(call('sixdegrees_hint', ask), env, answering(404, JSON.stringify({ code: 'PGRST202', message: 'Could not find the function' })));
       expect(away.status).toBe(503);
       expect(await away.json()).not.toHaveProperty('film');
+    });
+
+    it('in the star daily lead towards the day’s star, as the game picks it', async () => {
+      const upstream = answering(204, '');
+      const res = await handleWrite(call('sixdegrees_hint', { ...ask, p_mode: 'star' }), env, upstream);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ film: F3, person: B });
+      expect(sentTo(upstream)).toMatchObject([{ fn: 'sixdegrees_hint', args: { ...ask, p_mode: 'star' } }]);
+    });
+
+    it('in the star daily don’t exist at the star, or while the site’s data has no other stars', async () => {
+      for (const [bad, stars] of [[{ ...ask, p_mode: 'star', p_person: FAR }, true], [{ ...ask, p_mode: 'star' }, false]] as const) {
+        forgetSiteData();
+        const upstream = answering(204, '', stars);
+        const res = await handleWrite(call('sixdegrees_hint', bad), env, upstream);
+        expect(res.status).toBe(400);
+        expect(sentTo(upstream)).toEqual([]);
+      }
     });
 
     it('don’t exist in hard mode, at JT, or for someone the game doesn’t have', async () => {

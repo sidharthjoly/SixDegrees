@@ -1,4 +1,4 @@
-import { getPerson, loadMeta } from '../data';
+import { dailyStar, getPerson, loadMeta } from '../data';
 import { archiveDays, formatDay } from '../days';
 import { dailyPick, dayKey, dayNumber, plural } from '../logic';
 import { href } from '../router';
@@ -10,9 +10,9 @@ import { app, isCurrent, renderLoading, renderMessage, topBar } from './shell';
 import { describeMoves, gradeSquares } from './squares';
 
 /**
- * Past dailies, newest first, each linking to its normal and hard game. Who each day starts
- * from costs a person-shard fetch, so names load only for rows near the viewport, a few
- * fetches at a time.
+ * Past dailies, newest first, each linking to its normal, hard and star game. Who each day
+ * starts from costs a person-shard fetch (and its star another), so names load only for rows
+ * near the viewport, a few fetches at a time.
  */
 
 /** Person fetches in flight at once: enough to fill a screen quickly without a request storm. */
@@ -54,6 +54,7 @@ interface Row {
   /** Filled with the start person and par once loaded. */
   who: HTMLElement;
   hard: HTMLElement;
+  star: HTMLElement;
 }
 
 function row(day: string, today: string, pick: (day: string) => Qid): Row {
@@ -61,6 +62,8 @@ function row(day: string, today: string, pick: (day: string) => Qid): Row {
   const isToday = day === today;
   const who = h('p', { class: 'arc-who muted' }, 'Loading…');
   const hard = modeLink(day, 'hard', played(day, 'hard', today, pick), n);
+  // Whether a star daily's record is for the day's star is only known once the star loads.
+  const star = modeLink(day, 'star', played(day, 'star', today, pick), n);
   const el = h(
     'li',
     { class: 'card arc-row' + (isToday ? ' today' : '') },
@@ -72,9 +75,9 @@ function row(day: string, today: string, pick: (day: string) => Qid): Row {
       isToday && h('span', { class: 'arc-today' }, 'Today'),
     ),
     who,
-    h('div', { class: 'arc-modes' }, modeLink(day, 'normal', played(day, 'normal', today, pick), n), hard),
+    h('div', { class: 'arc-modes' }, modeLink(day, 'normal', played(day, 'normal', today, pick), n), hard, star),
   );
-  return { day, el, who, hard };
+  return { day, el, who, hard, star };
 }
 
 /** The saved finish for that day and mode, if it was for the start that day has now. */
@@ -84,8 +87,10 @@ function played(day: string, mode: Mode, today: string, pick: (day: string) => Q
   return rec && isUsable(rec, today) && rec.start === pick(day) ? rec : null;
 }
 
+const MODE_NAME: Record<Mode, string> = { normal: 'Normal', hard: 'Hard', star: 'Star' };
+
 function modeLink(day: string, mode: Mode, rec: DailyRecord | null, n: number): HTMLElement {
-  const modeName = mode === 'hard' ? 'Hard' : 'Normal';
+  const modeName = MODE_NAME[mode];
   let status: string;
   let detail: Child[];
   if (!rec) {
@@ -103,7 +108,7 @@ function modeLink(day: string, mode: Mode, rec: DailyRecord | null, n: number): 
   return h(
     'a',
     {
-      class: 'arc-mode' + (mode === 'hard' ? ' hard' : '') + (rec ? ' done' : ''),
+      class: 'arc-mode' + (mode === 'normal' ? '' : ` ${mode}`) + (rec ? ' done' : ''),
       href: href({ name: 'daily', day, mode, vs: null }),
       // The squares are hidden from screen readers, so the label says what they show.
       'aria-label': `${modeName}, Daily #${n}: ${status}`,
@@ -118,18 +123,25 @@ function lazyLoad(rows: Row[], gen: number, pick: (day: string) => Qid): void {
   const queue: Row[] = [];
   let active = 0;
 
+  const off = (name: string, why: string) => h('span', { class: 'arc-mode off' }, h('span', { class: 'arc-mode-name' }, name), h('span', { class: 'arc-detail' }, why));
   const load = async (r: Row) => {
     try {
-      const person = await getPerson(pick(r.day));
+      const [person, star] = await Promise.all([getPerson(pick(r.day)), dailyStar(r.day)]);
       if (!isCurrent(gen)) return;
       r.who.classList.remove('muted');
       const hardPar = person.hard.dist;
       r.who.replaceChildren(
         h('span', { class: 'arc-name' }, person.name),
         h('span', { class: 'arc-par' }, ` · par ${person.normal.dist}`, hardPar === Infinity ? '' : `, hard ${hardPar}`),
+        ...(star ? [h('span', { class: 'arc-par' }, ` · star: ${star.star.name}, par ${star.par}`)] : []),
       );
       // Some starts only reach Justin through films hard mode bans.
-      if (hardPar === Infinity) r.hard.replaceWith(h('span', { class: 'arc-mode off' }, h('span', { class: 'arc-mode-name' }, 'Hard'), h('span', { class: 'arc-detail' }, 'No hard-mode path')));
+      if (hardPar === Infinity) r.hard.replaceWith(off('Hard', 'No hard-mode path'));
+      if (!star) r.star.replaceWith(off('Star', 'Every star is too close'));
+      else if (r.star.classList.contains('done') && loadDaily(r.day, 'star')?.target !== star.star.id) {
+        // Finished for a star the day no longer has (the data was rebuilt): it's unplayed now.
+        r.star.replaceWith(modeLink(r.day, 'star', null, dayNumber(r.day)));
+      }
     } catch {
       if (isCurrent(gen)) r.who.textContent = 'Couldn’t load who this day starts from.';
     }

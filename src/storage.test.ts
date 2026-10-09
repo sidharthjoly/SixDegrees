@@ -54,6 +54,17 @@ describe('daily records', () => {
     expect(loadDaily('2026-10-08', 'normal')?.moves).toHaveLength(1);
   });
 
+  it('keeps the star daily apart too, and replaces it for a different star', () => {
+    saveDaily(rec());
+    saveDaily(rec({ mode: 'star', target: 3454165, par: 2 }));
+    expect(loadDaily('2026-10-08', 'normal')?.par).toBe(3);
+    expect(loadDaily('2026-10-08', 'star')).toMatchObject({ target: 3454165, par: 2 });
+    saveDaily(rec({ mode: 'star', target: 3454165, par: 2, moves: [] }));
+    expect(loadDaily('2026-10-08', 'star')?.moves).toHaveLength(1);
+    saveDaily(rec({ mode: 'star', target: 2263, par: 3 }));
+    expect(loadDaily('2026-10-08', 'star')).toMatchObject({ target: 2263, par: 3 });
+  });
+
   it('replaces a record for a different start (the day was re-picked by a data rebuild)', () => {
     saveDaily(rec());
     saveDaily(rec({ start: 99 }));

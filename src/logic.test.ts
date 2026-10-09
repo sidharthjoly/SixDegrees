@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { JT, dailyPick, dayNumber, dayOfNumber, emojiRow, filterByText, fold, grade, isPlayableDay, makeSearch, optimalPath, reachIn, shareText } from './logic';
-import type { Film, Loader, Person, SearchRow } from './types';
+import { JT, STAR_CANDIDATES, dailyPick, dayNumber, dayOfNumber, emojiRow, filterByText, fold, goalFor, grade, isPlayableDay, jtGoal, makeSearch, optimalPath, reachIn, shareText, starOfDay, targetOf, type Goal } from './logic';
+import type { Film, Loader, Person, Reach, SearchRow } from './types';
 
 const NONE = { dist: Infinity, parentFilm: 0, parentPerson: 0 };
 
@@ -25,6 +25,15 @@ const people = new Map<number, Person>([
   [11571, person(11571, 'Cristiano Ronaldo', 3, 3, 10, [[3, 'Goal III']], { dist: 3, parentFilm: 3, parentPerson: 10 })],
   [99, person(99, 'Only In Banned Films', 1, 185888, JT, [[185888, 'The Social Network']], NONE)],
 ]);
+// Free play can also head for another star. Here that's Beckham, whose distances live in
+// their own files (t/10/…), not in the person rows.
+const BECKHAM: Goal = { id: 10, name: 'David Beckham', mode: 'normal' };
+const towardBeckham = new Map<number, Reach>([
+  [10, { dist: 0, parentFilm: 0, parentPerson: 0 }],
+  [11571, { dist: 1, parentFilm: 3, parentPerson: 10 }],
+  [11, { dist: 1, parentFilm: 2, parentPerson: 10 }],
+  [JT, { dist: 2, parentFilm: 185888, parentPerson: 11 }],
+]);
 const loader: Loader = {
   person: async (id) => {
     const p = people.get(id);
@@ -34,9 +43,14 @@ const loader: Loader = {
   film: async () => {
     throw new Error('optimalPath should not need film shards');
   },
+  reach: async (target, id) => {
+    const r = target === BECKHAM.id && towardBeckham.get(id);
+    if (!r) throw new Error(`missing ${id} towards ${target}`);
+    return r;
+  },
 };
-const path = async (id: number, mode: 'normal' | 'hard' = 'normal') =>
-  (await optimalPath(people.get(id)!, loader, mode)).map((s) => `${s.film.title} > ${s.person.name}`);
+const path = async (id: number, goal: Goal = jtGoal()) =>
+  (await optimalPath(people.get(id)!, loader, goal)).map((s) => `${s.film.title} > ${s.person.name}`);
 
 describe('optimalPath', () => {
   it('follows parent pointers to JT', async () => {
@@ -44,7 +58,7 @@ describe('optimalPath', () => {
   });
 
   it('follows the hard-mode pointers in hard mode', async () => {
-    expect(await path(11571, 'hard')).toEqual(['Goal III > David Beckham', 'The Man from U.N.C.L.E. > Emile Hirsch', 'Alpha Dog > Justin Timberlake']);
+    expect(await path(11571, jtGoal('hard'))).toEqual(['Goal III > David Beckham', 'The Man from U.N.C.L.E. > Emile Hirsch', 'Alpha Dog > Justin Timberlake']);
   });
 
   it('is empty for JT himself', async () => {
@@ -53,7 +67,13 @@ describe('optimalPath', () => {
 
   it('refuses someone hard mode cannot reach', async () => {
     expect(reachIn(people.get(99)!, 'hard').dist).toBe(Infinity);
-    await expect(path(99, 'hard')).rejects.toThrow(/doesn't reach JT/);
+    await expect(path(99, jtGoal('hard'))).rejects.toThrow(/doesn't reach/);
+  });
+
+  it('follows another star’s own pointers when heading for them', async () => {
+    expect(await path(JT, BECKHAM)).toEqual(['The Social Network > Armie Hammer', 'The Man from U.N.C.L.E. > David Beckham']);
+    expect(await path(11571, BECKHAM)).toEqual(['Goal III > David Beckham']);
+    expect(await path(10, BECKHAM)).toEqual([]);
   });
 
   it('fails loudly on a broken parent pointer', async () => {
@@ -91,6 +111,12 @@ describe('grading and sharing', () => {
     const base = { daily: 1, mode: 'normal' as const, start: 'X', moves: [{ grade: 'closer' as const, hinted: false }], par: 1, gaveUp: false, url: 'u' };
     expect(shareText({ ...base, standing: 'Beat 72% of players' })).toBe('Six Degrees of JT #1\nX → Justin Timberlake\n🟩 1 film (par 1)\nBeat 72% of players\nu');
     expect(shareText({ ...base, standing: null })).toBe(shareText(base));
+  });
+
+  it('names another star in the title and the goal', () => {
+    const text = shareText({ daily: null, mode: 'normal', start: 'X', goal: BECKHAM, moves: [{ grade: 'closer', hinted: false }], par: 1, gaveUp: false, url: 'u' });
+    expect(text).toBe('Six Degrees of David Beckham\nX → David Beckham\n🟩 1 film (par 1)\nu');
+    expect(shareText({ daily: null, mode: 'normal', start: 'X', goal: jtGoal(), moves: [], par: 1, gaveUp: true, url: 'u' })).toMatch(/^Six Degrees of JT\nX → Justin Timberlake\n/);
   });
 
   it('marks hard mode and giving up', () => {
@@ -178,5 +204,72 @@ describe('daily challenge', () => {
     // Newcomers can only take over by out-hashing the current pick, never by shifting indexes.
     const winner = dailyPick(grown, '2026-10-08');
     expect(winner === pick || winner >= 9000).toBe(true);
+  });
+});
+
+describe('goals', () => {
+  const meta = { targets: [{ id: 10, name: 'David Beckham', film: 'Goal III' }] };
+
+  it('head for JT unless a link names one of the other stars', () => {
+    expect(goalFor(meta, undefined, 'hard')).toEqual(jtGoal('hard'));
+    expect(goalFor(meta, JT, 'normal')).toEqual(jtGoal());
+    expect(goalFor(meta, 10, 'normal')).toEqual(BECKHAM);
+  });
+
+  it('refuse anyone else, and another star in hard mode', () => {
+    expect(goalFor(meta, 11571, 'normal')).toBeNull();
+    expect(goalFor(meta, 10, 'hard')).toBeNull();
+  });
+
+  it('head for the day’s star in the star daily, which needs one', () => {
+    expect(goalFor(meta, 10, 'star')).toEqual({ ...BECKHAM, mode: 'star' });
+    expect(goalFor(meta, undefined, 'star')).toBeNull();
+    expect(goalFor(meta, JT, 'star')).toBeNull();
+  });
+
+  it('leave JT out of routes', () => {
+    expect(targetOf(jtGoal('hard'))).toBeUndefined();
+    expect(targetOf(BECKHAM)).toBe(10);
+  });
+});
+
+describe('starOfDay', () => {
+  const days = Array.from({ length: 40 }, (_, i) => dayOfNumber(i + 1));
+  const far = async () => 3;
+
+  it('gives everyone the same star on a day, whatever order the stars come in, and moves around', async () => {
+    const picks = await Promise.all(days.map((d) => starOfDay([1, 2, 3], d, 99, far)));
+    for (const [i, d] of days.entries()) expect(await starOfDay([3, 1, 2], d, 99, far)).toEqual(picks[i]);
+    expect(new Set(picks.map((p) => p!.id))).toEqual(new Set([1, 2, 3]));
+    expect(picks[0]!.par).toBe(3);
+  });
+
+  it('keeps the day’s star when other stars come and go', async () => {
+    for (const d of days) {
+      const { id } = (await starOfDay([1, 2, 3, 4], d, 99, far))!;
+      // A new star takes the day only if it outranks the old one; dropping others never moves it.
+      expect([id, 5, 6]).toContain((await starOfDay([1, 2, 3, 4, 5, 6], d, 99, far))!.id);
+      expect((await starOfDay([id, ...[1, 2, 3, 4].filter((x) => x !== id).slice(2)], d, 99, far))!.id).toBe(id);
+    }
+  });
+
+  it('passes over the start, and any star within one film of them or out of reach', async () => {
+    const d = days[0];
+    const top = (await starOfDay([1, 2, 3], d, 99, far))!.id;
+    const next = (await starOfDay([1, 2, 3].filter((x) => x !== top), d, 99, far))!.id;
+    expect(await starOfDay([1, 2, 3], d, 99, async (s) => (s === top ? 1 : 2))).toEqual({ id: next, par: 2 });
+    expect(await starOfDay([1, 2, 3], d, 99, async (s) => (s === top ? Infinity : 2))).toEqual({ id: next, par: 2 });
+    expect((await starOfDay([1, 2, 3], d, top, far))!.id).toBe(next);
+  });
+
+  it('looks at no more than a few stars, and has none when none of them will do', async () => {
+    const asked: number[] = [];
+    const near = async (s: number) => {
+      asked.push(s);
+      return 1;
+    };
+    expect(await starOfDay([1, 2, 3, 4, 5, 6, 7, 8], days[0], 99, near)).toBeNull();
+    expect(asked).toHaveLength(STAR_CANDIDATES);
+    expect(await starOfDay([], days[0], 99, far)).toBeNull();
   });
 });

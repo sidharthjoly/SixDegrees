@@ -224,11 +224,12 @@ export interface DayStats {
 }
 
 /**
- * A hint in a daily: the next film and person on a shortest route from `person`. It comes
- * from the server, which records the asking first, so the result counts it (src/gate.ts).
+ * A hint in a daily (normal, or the star daily): the next film and person on a shortest route
+ * from `person`. It comes from the server, which records the asking first, so the result
+ * counts it (src/gate.ts).
  */
-export const dailyHint = (day: string, person: Qid) =>
-  rpc<{ film: Qid; person: Qid }>('sixdegrees_hint', { p_client: clientId(), p_day: day, p_mode: 'normal', p_person: person });
+export const dailyHint = (day: string, mode: Mode, person: Qid) =>
+  rpc<{ film: Qid; person: Qid }>('sixdegrees_hint', { p_client: clientId(), p_day: day, p_mode: mode, p_person: person });
 
 export const dayStats = (day: string, mode: Mode) => rpc<DayStats>('sixdegrees_day', { p_day: day, p_mode: mode, p_client: clientId() });
 
@@ -272,6 +273,8 @@ export interface GroupMember {
   me: boolean;
   normal: GroupResult | null;
   hard: GroupResult | null;
+  /** The star daily's. Missing before the server had it. */
+  star?: GroupResult | null;
   week: { played: number; points: number };
 }
 

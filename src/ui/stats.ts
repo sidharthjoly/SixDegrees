@@ -49,7 +49,7 @@ export async function renderStats(gen: number): Promise<void> {
     links,
   );
 
-  if (stats.normal.played + stats.hard.played === 0) {
+  if (stats.normal.played + stats.hard.played + stats.star.played === 0) {
     app.replaceChildren(
       topBar(),
       head,
@@ -64,7 +64,7 @@ export async function renderStats(gen: number): Promise<void> {
     return;
   }
 
-  const { normal, hard, streak } = stats;
+  const { normal, hard, star, streak } = stats;
   const playedToday = streakDays(records.filter((r) => isUsable(r, today))).has(today);
   app.replaceChildren(
     topBar(),
@@ -85,12 +85,13 @@ export async function renderStats(gen: number): Promise<void> {
         },
         { value: String(streak.best), label: 'Best streak', detail: streak.best === 1 ? 'day' : 'days' },
       ]),
-      h('p', { class: 'muted stats-note' }, 'A streak is consecutive days with that day’s daily finished on the day, in normal mode, without giving up. Past dailies played late don’t count.'),
+      h('p', { class: 'muted stats-note' }, 'A streak is consecutive days with that day’s daily finished on the day without giving up, the JT one or the star daily. Past dailies played late don’t count.'),
     ),
     normal.played > 0
       ? scoreChart(normal, 'Your scores', 'How your dailies charted against par')
       : h('section', { class: 'card' }, h('h2', null, 'Your scores'), h('p', null, 'No normal-mode dailies yet.')),
-    hardSection(hard, today),
+    sideSection('hard', hard, today),
+    sideSection('star', star, today),
   );
 }
 
@@ -164,26 +165,47 @@ export function scoreChart(s: ModeStats, title: string, caption: string, small =
   );
 }
 
-function hardSection(hard: ModeStats, today: string): HTMLElement {
+/** The words for the dailies kept apart from the main ones. */
+const SIDE = {
+  hard: {
+    title: 'Hard mode',
+    about: 'No hints, and JT’s five best-known films are banned. Kept apart from your daily stats.',
+    none: 'No hard-mode dailies yet. ',
+    link: 'Try today’s in hard mode',
+    chartTitle: 'Hard-mode scores',
+    chartAbout: 'How your hard-mode dailies charted against par',
+  },
+  star: {
+    title: 'Star dailies',
+    about: 'The day’s start, heading for one of the other stars instead of JT. Kept apart from your daily stats, but it keeps your streak going.',
+    none: 'No star dailies yet. ',
+    link: 'Try today’s',
+    chartTitle: 'Star daily scores',
+    chartAbout: 'How your star dailies charted against par',
+  },
+} as const;
+
+function sideSection(mode: keyof typeof SIDE, s: ModeStats, today: string): HTMLElement {
+  const words = SIDE[mode];
   const body =
-    hard.played === 0
-      ? [h('p', null, 'No hard-mode dailies yet. ', h('a', { href: href({ name: 'daily', day: today, mode: 'hard', vs: null }) }, 'Try today’s in hard mode'), '.')]
+    s.played === 0
+      ? [h('p', null, words.none, h('a', { href: href({ name: 'daily', day: today, mode, vs: null }) }, words.link), '.')]
       : [
           tiles(
             [
-              { value: String(hard.played), label: 'Played', detail: hard.played === 1 ? 'game' : 'games' },
-              rateTile('Finished', hard.completed, hard.played),
-              rateTile('Par or better', hard.parOrBetter, hard.played),
+              { value: String(s.played), label: 'Played', detail: s.played === 1 ? 'game' : 'games' },
+              rateTile('Finished', s.completed, s.played),
+              rateTile('Par or better', s.parOrBetter, s.played),
             ],
             true,
           ),
-          scoreChart(hard, 'Hard-mode scores', 'How your hard-mode dailies charted against par', true),
+          scoreChart(s, words.chartTitle, words.chartAbout, true),
         ];
   return h(
     'section',
-    { class: 'card stats-hard', 'aria-labelledby': 'stats-hard' },
-    h('h2', { id: 'stats-hard' }, 'Hard mode'),
-    h('p', { class: 'muted' }, 'No hints, and JT’s five best-known films are banned. Kept apart from your daily stats.'),
+    { class: 'card stats-hard', 'aria-labelledby': `stats-${mode}` },
+    h('h2', { id: `stats-${mode}` }, words.title),
+    h('p', { class: 'muted' }, words.about),
     ...body,
   );
 }

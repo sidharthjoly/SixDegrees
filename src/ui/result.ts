@@ -1,5 +1,5 @@
 import { loader } from '../data';
-import { dayKey, dayNumber, emojiRow, optimalPath, plural, shareText, type MoveSummary, type Step } from '../logic';
+import { dayKey, dayNumber, emojiRow, optimalPath, plural, shareText, targetOf, type Goal, type MoveSummary, type Step } from '../logic';
 import { submitResult, standingText, type Verdict } from '../online';
 import { saveDaily } from '../storage';
 import type { Mode, Person } from '../types';
@@ -8,7 +8,7 @@ import { h } from './dom';
 import { everyonePanel } from './everyone';
 import { celebrate } from './fx';
 import { groupsPanel } from './groups';
-import { distOf, type Game, type Move } from './play';
+import { label as labelOf, par as parOf, type Game, type Move } from './play';
 import { puzzleUrl, shareActions } from './share';
 import { app, randomStart, topBar } from './shell';
 import { tracks, type ChainStep } from './tracks';
@@ -18,6 +18,8 @@ export interface ResultContext {
   /** The daily's date, or null for free play. */
   day: string | null;
   mode: Mode;
+  /** Who the game headed for. */
+  goal: Goal;
   start: Person;
   par: number;
   /** The player's own moves. */
@@ -36,16 +38,16 @@ export interface ResultContext {
 }
 
 export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): Promise<void> {
-  const best = await optimalPath(g.start, loader, g.mode);
+  const best = await optimalPath(g.start, loader, g.goal);
   const moves: MoveSummary[] = g.moves.map((m) => ({ grade: m.grade, hinted: m.hinted }));
   const n = g.moves.length;
-  const par = distOf(g, g.start);
+  const par = parOf(g);
   const late = !!g.day && g.day !== dayKey(new Date());
   const path = g.moves.map((m): [number, number] => [m.film.id, m.person.id]);
   // Dailies also go to the server (when there is one) for the day's stats and groups.
   let uploaded: Promise<Verdict | undefined> = Promise.resolve(undefined);
   if (g.day) {
-    saveDaily({ v: 2, day: g.day, mode: g.mode, start: g.start.id, par, moves, path, gaveUp, late, at: new Date().toISOString() });
+    saveDaily({ v: 2, day: g.day, mode: g.mode, start: g.start.id, target: targetOf(g.goal), par, moves, path, gaveUp, late, at: new Date().toISOString() });
     uploaded = submitResult({ day: g.day, mode: g.mode, par, moves, path, gaveUp, late }).catch(() => undefined);
   }
 
@@ -64,16 +66,18 @@ export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): P
       daily: g.day ? dayNumber(g.day) : null,
       mode: g.mode,
       start: g.start.name,
+      goal: g.goal,
       moves,
       par,
       gaveUp,
-      url: puzzleUrl({ day: g.day, start: g.start.id, mode: g.mode }),
+      url: puzzleUrl({ day: g.day, start: g.start.id, mode: g.mode, target: targetOf(g.goal) }),
       standing,
     });
-  const label = (g.day ? `Daily #${dayNumber(g.day)}` : 'Free play') + (g.mode === 'hard' ? ' · Hard' : '');
+  const label = labelOf(g);
   const ctx: ResultContext = {
     day: g.day,
     mode: g.mode,
+    goal: g.goal,
     start: g.start,
     par,
     moves: g.moves,
@@ -98,10 +102,10 @@ export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): P
     h(
       'section',
       { class: 'card result' },
-      h('span', { class: 'pill' + (g.mode === 'hard' ? ' hard' : '') }, label),
+      h('span', { class: 'pill' + (g.mode === 'normal' ? '' : ` ${g.mode}`) }, label),
       h('h1', null, headline),
       h('p', { class: 'score' }, h('span', { class: 'emoji' }, emojiRow(moves)), ' ', gaveUp ? `${plural(n, 'film')} played, par ${par}` : `${plural(n, 'film')} · par ${par}`),
-      h('div', { class: 'row' }, shareActions(ctx), h('button', { class: 'btn', type: 'button', onclick: () => void randomStart(g.mode) }, 'Random star'), h('a', { href: '#/', class: 'btn' }, 'Home')),
+      h('div', { class: 'row' }, shareActions(ctx), h('button', { class: 'btn', type: 'button', onclick: () => void randomStart(g.mode === 'hard' ? 'hard' : 'normal', targetOf(g.goal)) }, 'Random star'), h('a', { href: '#/', class: 'btn' }, 'Home')),
     ),
     everyone ?? '',
     groups ?? '',

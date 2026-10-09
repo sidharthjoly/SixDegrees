@@ -16,6 +16,14 @@ import type { Mode, Qid } from './types';
  *   │ └ start person, base36
  *   └ format version
  *
+ * A free-play game towards one of the other stars is format 2, with the star after the start:
+ *
+ *   2.8bl.22191.nf.csCc.….U2Ft.k3q
+ *         └ the star, base36 (here Kevin Bacon)
+ *
+ * JT's games stay format 1, so links from older copies of the game keep working. Hard mode is
+ * his alone, so format 2 is always "n".
+ *
  * Every character is URL-safe, so the link needs no percent-escapes. The checksum keeps the
  * code ending in a letter or digit: chat apps drop a trailing "." from a link, and an empty
  * name field would otherwise leave one. It also catches links cut short or edited by hand.
@@ -27,6 +35,8 @@ import type { Mode, Qid } from './types';
 export interface Challenge {
   /** Who the game started from: the code is only for that puzzle. */
   start: Qid;
+  /** Who it headed for: one of the other stars, or JT when left out. */
+  target?: Qid;
   mode: Mode;
   moves: MoveSummary[];
   gaveUp: boolean;
@@ -37,6 +47,7 @@ export interface Challenge {
 }
 
 const VERSION = '1';
+const TARGET_VERSION = '2';
 export const MAX_NAME_LENGTH = 20;
 /** Far beyond any real game; keeps a grades-only code well under the router's cap. */
 export const MAX_MOVES = 200;
@@ -113,9 +124,10 @@ function fromBase64Url(s: string): string | null {
 export function encodeChallenge(c: Challenge): string | null {
   if (c.moves.length > MAX_MOVES) return null;
   const name = c.name ? cleanName(c.name) : '';
+  const other = c.target !== undefined && c.target !== JT;
+  if (other && c.mode === 'hard') return null;
   const head = [
-    VERSION,
-    qidOut(c.start),
+    ...(other ? [TARGET_VERSION, qidOut(c.start), qidOut(c.target!)] : [VERSION, qidOut(c.start)]),
     (c.mode === 'hard' ? 'h' : 'n') + (c.gaveUp ? 'g' : 'f'),
     c.moves.map((m) => (m.hinted ? GRADE_CHAR[m.grade].toUpperCase() : GRADE_CHAR[m.grade])).join(''),
   ];
@@ -133,21 +145,27 @@ export function encodeChallenge(c: Challenge): string | null {
 export function decodeChallenge(code: string): Challenge | null {
   if (typeof code !== 'string' || code.length > MAX_VS_LENGTH) return null;
   const fields = code.split('.');
-  if (fields.length !== 7) return null;
-  const [version, startField, flags, movesField, pathField, nameField, sum] = fields;
-  if (version !== VERSION || sum !== checksum(fields.slice(0, 6).join('.'))) return null;
+  const other = fields[0] === TARGET_VERSION;
+  if (fields.length !== (other ? 8 : 7) || (!other && fields[0] !== VERSION)) return null;
+  const sum = fields.pop()!;
+  if (sum !== checksum(fields.join('.'))) return null;
+  // Format 1 has no star, so read it as format 2 heading for JT.
+  const [, startField, targetField, flags, movesField, pathField, nameField] = other ? fields : [fields[0], fields[1], '', ...fields.slice(2)];
 
   const start = qidIn(startField);
-  if (start === null || start === JT) return null;
+  const target = other ? qidIn(targetField) : JT;
+  // A star's code never names JT: his games are format 1, so each game has one spelling.
+  if (start === null || target === null || start === target || (other && target === JT)) return null;
   const flag = /^([nh])([fg])$/.exec(flags);
-  if (!flag) return null;
+  // Hard mode is JT's alone.
+  if (!flag || (other && flag[1] === 'h')) return null;
   const mode: Mode = flag[1] === 'h' ? 'hard' : 'normal';
   const gaveUp = flag[2] === 'g';
 
   // Hard mode has no hints, so an upper-case grade there is a forgery.
   if (movesField.length > MAX_MOVES || !(mode === 'hard' ? /^[csf]*$/ : /^[csfCSF]*$/).test(movesField)) return null;
   const moves: MoveSummary[] = [...movesField].map((ch) => ({ grade: CHAR_GRADE[ch.toLowerCase()], hinted: ch !== ch.toLowerCase() }));
-  // A finished game ends on JT, which is always a step closer; giving up can happen before any move.
+  // A finished game ends on the star, which is always a step closer; giving up can happen before any move.
   if (!gaveUp && (moves.length === 0 || moves.at(-1)!.grade !== 'closer')) return null;
 
   let path: [Qid, Qid][] | null = null;
@@ -162,8 +180,8 @@ export function decodeChallenge(code: string): Challenge | null {
       if (film === null || person === null) return null;
       path.push([film, person]);
     }
-    // Reaching JT ends the game, so he can only be the very last step, and only of a finished game.
-    if (path.some(([, p], i) => (p === JT) !== (!gaveUp && i === path!.length - 1))) return null;
+    // Reaching the star ends the game, so they can only be the very last step, and only of a finished game.
+    if (path.some(([, p], i) => (p === target) !== (!gaveUp && i === path!.length - 1))) return null;
   }
 
   let name: string | null = null;
@@ -171,7 +189,7 @@ export function decodeChallenge(code: string): Challenge | null {
     name = fromBase64Url(nameField);
     if (name === null || !isValidName(name)) return null;
   }
-  return { start, mode, moves, gaveUp, path, name };
+  return { start, ...(other && { target }), mode, moves, gaveUp, path, name };
 }
 
 export type Outcome = 'win' | 'lose' | 'draw';

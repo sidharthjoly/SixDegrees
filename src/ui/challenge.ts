@@ -1,6 +1,6 @@
 import { MAX_NAME_LENGTH, cleanName, compareResults, decodeChallenge, encodeChallenge, sideOf, type Challenge, type Reason, type Side } from '../challenge-code';
 import { getPerson } from '../data';
-import { dayNumber, plural, reachIn, shareText, type MoveSummary } from '../logic';
+import { JT, dayNumber, plural, shareText, targetOf, type Goal, type MoveSummary } from '../logic';
 import { loadPlayerName, savePlayerName } from '../storage';
 import type { Mode, Person, Qid } from '../types';
 import { h } from './dom';
@@ -18,13 +18,19 @@ import { tracks, type ChainStep } from './tracks';
 
 type Parsed = { kind: 'none' } | { kind: 'broken' } | { kind: 'elsewhere' } | { kind: 'ok'; challenge: Challenge };
 
+/**
+ * A code's rules: hard or normal. The star daily plays by normal rules, so its codes are the
+ * same as free play's from that start to that star: the same puzzle, either way.
+ */
+const rules = (mode: Mode): Mode => (mode === 'hard' ? 'hard' : 'normal');
+
 /** The code from the link, checked against the puzzle actually being played. */
-function parse(vs: string | null, start: Qid, mode: Mode): Parsed {
+function parse(vs: string | null, start: Qid, mode: Mode, goal: Goal): Parsed {
   if (!vs) return { kind: 'none' };
   const challenge = decodeChallenge(vs);
   if (!challenge) return { kind: 'broken' };
   // The route decides the puzzle; a code made for another one would compare apples to pears.
-  if (challenge.start !== start || challenge.mode !== mode) return { kind: 'elsewhere' };
+  if (challenge.start !== start || challenge.mode !== rules(mode) || (challenge.target ?? JT) !== goal.id) return { kind: 'elsewhere' };
   return { kind: 'ok', challenge };
 }
 
@@ -53,11 +59,11 @@ function scoreLine(side: Side): string {
 
 /** Shown on the play screen under the status: the score to beat, without giving away the route. */
 export function challengeBanner(game: Game): HTMLElement | null {
-  const parsed = parse(game.vs, game.start.id, game.mode);
+  const parsed = parse(game.vs, game.start.id, game.mode, game.goal);
   if (parsed.kind === 'none') return null;
   if (parsed.kind !== 'ok') return h('p', { class: 'note vs-note', role: 'status' }, `${NOTES[parsed.kind]}, so this is a regular game.`);
   const c = parsed.challenge;
-  const par = reachIn(game.start, game.mode).dist;
+  const par = game.reach.dist;
   return h(
     'section',
     { class: 'vs-banner', 'aria-label': 'Challenge' },
@@ -67,7 +73,7 @@ export function challengeBanner(game: Game): HTMLElement | null {
       { class: 'vs-banner-body' },
       h('p', { class: 'vs-line' }, h('strong', null, `Beat ${who(c)}: `), `${scoreLine(sideOf(c.moves, c.gaveUp))} (par ${par})`),
       c.moves.length > 0 && gradeSquares(c.moves),
-      h('p', { class: 'vs-hint' }, c.gaveUp ? 'They didn’t make it, so reaching Justin wins.' : 'Their films stay hidden until you finish.'),
+      h('p', { class: 'vs-hint' }, c.gaveUp ? `They didn’t make it, so reaching ${game.goal.id === JT ? 'Justin' : game.goal.name} wins.` : 'Their films stay hidden until you finish.'),
     ),
   );
 }
@@ -76,7 +82,7 @@ export function challengeBanner(game: Game): HTMLElement | null {
 
 /** Shown on the result screen: who won and both countdowns, plus a way to send a challenge. */
 export function challengePanel(ctx: ResultContext): HTMLElement | null {
-  const parsed = parse(ctx.vs, ctx.start.id, ctx.mode);
+  const parsed = parse(ctx.vs, ctx.start.id, ctx.mode, ctx.goal);
   const wrap = h('div', { class: 'challenge' });
   if (parsed.kind === 'ok') {
     wrap.append(verdict(ctx, parsed.challenge), comparison(ctx, parsed.challenge));
@@ -178,7 +184,8 @@ async function friendSteps(start: Person, c: Challenge, path: [Qid, Qid][]): Pro
 function challengeUrl(ctx: ResultContext, name: string): string | null {
   const vs = encodeChallenge({
     start: ctx.start.id,
-    mode: ctx.mode,
+    target: targetOf(ctx.goal),
+    mode: rules(ctx.mode),
     moves: summaries(ctx.moves),
     gaveUp: ctx.gaveUp,
     path: ctx.moves.map((m) => [m.film.id, m.person.id]),
@@ -187,7 +194,7 @@ function challengeUrl(ctx: ResultContext, name: string): string | null {
   if (!vs) return null;
   // puzzleUrl is the day's preview page in production (so the link unfurls in chats; it
   // forwards ?vs= into the game) and a hash route otherwise; either way ?vs= goes last.
-  return `${puzzleUrl({ day: ctx.day, start: ctx.start.id, mode: ctx.mode })}?vs=${encodeURIComponent(vs)}`;
+  return `${puzzleUrl({ day: ctx.day, start: ctx.start.id, mode: ctx.mode, target: targetOf(ctx.goal) })}?vs=${encodeURIComponent(vs)}`;
 }
 
 let formCount = 0;
@@ -220,7 +227,7 @@ function sendForm(ctx: ResultContext, intro: string | null): HTMLElement {
       status.textContent = 'That game is too long to fit in a link. Try a shorter one!';
       return;
     }
-    const text = `Can you beat me?\n${shareText({ daily: ctx.day ? dayNumber(ctx.day) : null, mode: ctx.mode, start: ctx.start.name, moves: summaries(ctx.moves), par: ctx.par, gaveUp: ctx.gaveUp, url })}`;
+    const text = `Can you beat me?\n${shareText({ daily: ctx.day ? dayNumber(ctx.day) : null, mode: ctx.mode, start: ctx.start.name, goal: ctx.goal, moves: summaries(ctx.moves), par: ctx.par, gaveUp: ctx.gaveUp, url })}`;
     try {
       if (navigator.share && matchMedia('(pointer: coarse)').matches) {
         await navigator.share({ text });

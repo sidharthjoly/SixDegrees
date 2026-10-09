@@ -107,6 +107,11 @@
   color: #111111;
 }
 
+.pill.star {
+  background: var(--lime);
+  color: #111111;
+}
+
 /* ------------------------------------------------------------ picker (filter + options) */
 
 /* Options are buttons straight inside the listbox (no <li>), so the base rule that drops the

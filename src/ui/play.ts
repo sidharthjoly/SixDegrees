@@ -2,9 +2,9 @@ import { CostarSearch, type CostarHit } from '../costars';
 import { StaleDataError, getFilm, getPerson, loadMeta, loader } from '../data';
 import { keyCommand, keysWhileMounted } from '../keys';
 import { foldList } from '../lists';
-import { JT, dayNumber, filterByText, fold, grade, optimalPath, plural, reachIn, type Grade } from '../logic';
+import { JT, dayNumber, filterByText, fold, goalFor, grade, optimalPath, plural, reachIn, reachTo, type Goal, type Grade } from '../logic';
 import { OnlineError, dailyHint, online } from '../online';
-import type { Film, FilmRef, Mode, Person, PersonRef, Qid } from '../types';
+import type { Film, FilmRef, Mode, Person, PersonRef, Qid, Reach } from '../types';
 import { challengeBanner } from './challenge';
 import { feel } from './haptics';
 import { h, yearOf, type Child } from './dom';
@@ -17,6 +17,8 @@ import { afterKeyboard, isPhone, trackKeyboard } from './viewport';
 export interface Move {
   film: FilmRef;
   person: Person;
+  /** How far the person is from the game's goal. */
+  reach: Reach;
   grade: Grade;
   hinted: boolean;
 }
@@ -25,11 +27,15 @@ export interface Game {
   /** The daily's date, or null for free play. */
   day: string | null;
   mode: Mode;
+  /** Who the game heads for: JT, or in free play one of the other stars. */
+  goal: Goal;
   /** Films that can't be used this game (hard mode's bans). */
   banned: Set<Qid>;
   /** A friend's result to beat, as the raw ?vs= code (decoded by the challenge feature). */
   vs: string | null;
   start: Person;
+  /** How far the start is from the goal. */
+  reach: Reach;
   moves: Move[];
   /** Film whose cast list is open, or null when choosing a film. */
   film: Film | null;
@@ -63,15 +69,17 @@ const finePointer = () => matchMedia('(pointer: fine)').matches;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export const current = (g: Game): Person => g.moves.at(-1)?.person ?? g.start;
-/** The current person's distance to JT in this game's mode (Infinity if unreachable). */
-export const distOf = (g: Game, p: Person) => reachIn(p, g.mode).dist;
-export const par = (g: Game) => distOf(g, g.start);
+/** How far the current person is from the goal. */
+const reachHere = (g: Game): Reach => g.moves.at(-1)?.reach ?? g.reach;
+export const par = (g: Game) => g.reach.dist;
 
 export interface StartOptions {
   qid: Qid;
   day: string | null;
   mode: Mode;
   vs: string | null;
+  /** One of the other stars, for free play or the star daily; left out for JT. */
+  target?: Qid;
 }
 
 export async function startGame(opts: StartOptions, gen: number): Promise<void> {
@@ -79,34 +87,45 @@ export async function startGame(opts: StartOptions, gen: number): Promise<void> 
   game = null;
   const [start, meta] = await Promise.all([getPerson(opts.qid), loadMeta()]);
   if (!isCurrent(gen)) return;
-  if (start.id === JT) {
-    renderMessage('That’s Justin himself', 'He is zero films away from himself. Pick someone else.');
+  // A JT daily never names a star: only free play and the star daily do.
+  const goal = goalFor(meta, opts.day && opts.mode !== 'star' ? undefined : opts.target, opts.mode);
+  if (!goal) {
+    renderMessage('Not one of the stars', 'Free play heads for Justin Timberlake or one of the stars listed on the home page, and that link names someone else.');
+    return;
+  }
+  if (start.id === goal.id) {
+    if (goal.id === JT) renderMessage('That’s Justin himself', 'He is zero films away from himself. Pick someone else.');
+    else renderMessage(`That’s ${goal.name}`, `${goal.name} is where this game ends. Pick someone else to start from.`);
     return;
   }
   if (opts.mode === 'hard' && start.hard.dist === Infinity) {
     renderMessage('Not possible in hard mode', `${start.name} only links to Justin through films hard mode bans. Try normal mode.`);
     return;
   }
+  const reach = await reachTo(start, goal, loader);
+  if (!isCurrent(gen)) return;
   game = {
     day: opts.day,
     mode: opts.mode,
+    goal,
     banned: new Set(opts.mode === 'hard' ? meta.hardBanned.map((f) => f.id) : []),
     vs: opts.vs,
     start,
+    reach,
     moves: [],
     film: null,
     filter: '',
     hint: null,
     busy: false,
   };
-  document.title = `${start.name} → Justin Timberlake · Six Degrees`;
+  document.title = `${start.name} → ${goal.name} · Six Degrees`;
   trackKeyboard();
   renderPlay();
   window.scrollTo({ top: 0 });
 }
 
-function label(g: Game): string {
-  return (g.day ? `Daily #${dayNumber(g.day)}` : 'Free play') + (g.mode === 'hard' ? ' · Hard' : '');
+export function label(g: Pick<Game, 'day' | 'mode'>): string {
+  return (g.day ? `Daily #${dayNumber(g.day)}` : 'Free play') + (g.mode === 'hard' ? ' · Hard' : g.mode === 'star' ? ' · Star' : '');
 }
 
 function renderPlay(scroll = false): void {
@@ -129,8 +148,8 @@ function renderPlay(scroll = false): void {
     h(
       'section',
       { class: 'status' },
-      h('span', { class: 'pill' + (g.mode === 'hard' ? ' hard' : '') }, label(g)),
-      h('h1', { class: 'task' }, g.start.name, h('span', { class: 'to' }, ' → '), 'Justin Timberlake'),
+      h('span', { class: 'pill' + (g.mode === 'normal' ? '' : ` ${g.mode}`) }, label(g)),
+      h('h1', { class: 'task' }, g.start.name, h('span', { class: 'to' }, ' → '), g.goal.name),
       h(
         'dl',
         { class: 'meters' },
@@ -142,7 +161,7 @@ function renderPlay(scroll = false): void {
     h(
       'div',
       { class: 'play' },
-      h('div', { class: 'play-list' }, h('h2', { class: 'section-label' }, 'Your setlist'), tracks(g.start, g.moves, { pending: true, fresh: fresh ? g.moves.length - 1 : undefined })),
+      h('div', { class: 'play-list' }, h('h2', { class: 'section-label' }, 'Your setlist'), tracks(g.start, g.moves, { pending: true, fresh: fresh ? g.moves.length - 1 : undefined, goal: g.goal.name })),
       h(
         'div',
         { class: 'play-main' },
@@ -151,7 +170,7 @@ function renderPlay(scroll = false): void {
           'div',
           { class: 'actions' },
           h('button', { class: 'btn', type: 'button', disabled: g.busy || (g.moves.length === 0 && !g.film), onclick: undo }, '↶ Undo'),
-          g.mode === 'normal' && h('button', { class: 'btn', type: 'button', disabled: g.busy || g.hint !== null, onclick: showHint }, '💡 Hint'),
+          g.mode !== 'hard' && h('button', { class: 'btn', type: 'button', disabled: g.busy || g.hint !== null, onclick: showHint }, '💡 Hint'),
           h('button', { class: 'btn', type: 'button', disabled: g.busy, onclick: () => void giveUp() }, 'Show me the way'),
         ),
         view.hintTrouble ? h('p', { class: 'note', role: 'status' }, view.hintTrouble) : null,
@@ -222,7 +241,7 @@ function keysLegend(g: Game, id: string): HTMLElement {
   // Each key stays on one line with its label when the legend wraps.
   const entry = (keys: string[], what: string) => h('span', null, ...keys.map((k) => h('kbd', null, k)), ` ${what}`);
   const entries = [entry(['↑', '↓'], 'pick'), entry(['Enter'], 'choose'), entry(['Esc'], g.film ? 'back' : g.moves.length > 0 ? 'undo' : 'clear')];
-  if (g.mode === 'normal' && !g.hint) entries.push(entry([isMac() ? '⌥H' : 'Alt+H'], 'hint'));
+  if (g.mode !== 'hard' && !g.hint) entries.push(entry([isMac() ? '⌥H' : 'Alt+H'], 'hint'));
   return h('p', { class: 'keys-legend', id }, ...entries.flatMap((e, i) => (i ? [' · ', e] : [e])));
 }
 
@@ -233,6 +252,7 @@ interface Panel {
 }
 
 function playPanel(g: Game, cur: Person): Panel {
+  const isGoal = (p: PersonRef) => p.id === g.goal.id;
   const hintFilm = g.hint?.film ?? 0;
   const hintPerson = g.hint?.person ?? 0;
   // The pulse plays on the first fill only; later refills (typing) rebuild the options.
@@ -311,12 +331,12 @@ function playPanel(g: Game, cur: Person): Panel {
       const hinted = p.id === hintPerson;
       return {
         id: `opt-c-${p.id}`,
-        className: cls(p.id === JT && 'is-jt', hinted && 'hinted'),
+        className: cls(isGoal(p) && 'is-jt', hinted && 'hinted'),
         disabled: g.busy,
         choose: () => void choosePerson(p, via),
         content: [
           h('span', { class: 'opt-main' }, hinted ? '💡 ' : '', p.name, h('span', { class: 'opt-sub' }, 'via ', via.title, yearOf(via), more > 0 ? ` · +${plural(more, 'more film')}` : '')),
-          h('span', { class: 'opt-meta' }, p.id === JT ? '★ #1' : ''),
+          h('span', { class: 'opt-meta' }, isGoal(p) ? '★ #1' : ''),
         ],
       };
     };
@@ -358,7 +378,7 @@ function playPanel(g: Game, cur: Person): Panel {
         wasDone = search.done;
         search.watch(onProgress);
       }
-      const { hits, total } = search.index.search(q, COSTAR_LIMIT);
+      const { hits, total } = search.index.search(q, COSTAR_LIMIT, g.goal.id);
       const groups: PickGroup[] = [];
       if (filmOptions.length > 0) groups.push({ label: 'Films', options: filmOptions });
       groups.push({ label: 'Co-stars', aside: progress(search), options: hits.map(costarOption) });
@@ -380,25 +400,25 @@ function playPanel(g: Game, cur: Person): Panel {
     ];
   } else {
     const film = g.film;
-    // JT first so a winning cast list is impossible to miss.
-    const cast = film.cast.filter((p) => p.id !== cur.id).sort((a, b) => Number(b.id === JT) - Number(a.id === JT));
+    // The goal first so a winning cast list is impossible to miss.
+    const cast = film.cast.filter((p) => p.id !== cur.id).sort((a, b) => Number(isGoal(b)) - Number(isGoal(a)));
     const hintHere = film.id === hintFilm;
     const personId = (p: PersonRef) => `opt-p-${p.id}`;
     const castOption = (p: PersonRef): PickOption => {
       const hinted = hintHere && p.id === hintPerson;
       return {
         id: personId(p),
-        className: cls(p.id === JT && 'is-jt', hinted && 'hinted', hinted && pulse && 'pulse'),
+        className: cls(isGoal(p) && 'is-jt', hinted && 'hinted', hinted && pulse && 'pulse'),
         disabled: g.busy,
         choose: () => void choosePerson(p),
-        content: [h('span', { class: 'opt-main' }, hinted ? '💡 ' : '', p.name), h('span', { class: 'opt-meta' }, p.id === JT ? '★ #1' : '')],
+        content: [h('span', { class: 'opt-main' }, hinted ? '💡 ' : '', p.name), h('span', { class: 'opt-meta' }, isGoal(p) ? '★ #1' : '')],
       };
     };
     fill = () => {
       const q = g.filter.trim();
       const options = q
         ? filterByText(cast, q, (p) => p.name).map(castOption)
-        : folded(cast, `c:${film.id}`, (p) => p.fame ?? 0, (p) => p.id === JT || (hintHere && p.id === hintPerson), personId, castOption, 'people');
+        : folded(cast, `c:${film.id}`, (p) => p.fame ?? 0, (p) => isGoal(p) || (hintHere && p.id === hintPerson), personId, castOption, 'people');
       pulse = false;
       picker.setGroups([{ options }]);
       setNote(q && options.length === 0 ? `Nobody in the cast matches “${q}”.` : '');
@@ -499,16 +519,19 @@ export function choosePerson(ref: PersonRef, via?: FilmRef): Promise<void> {
   // Still inside the tap here, which the iPhone tick needs (haptics.ts).
   if (!g.busy) feel('pick');
   return guarded(async (g) => {
-    const from = current(g);
-    const person = await getPerson(ref.id);
-    const graded = grade(distOf(g, from), distOf(g, person));
-    g.moves.push({ film, person, grade: graded, hinted: g.hint !== null });
+    const from = reachHere(g);
+    // Another star's distances are in their own files: fetch that alongside the person.
+    const [person, toward] = await Promise.all([getPerson(ref.id), g.goal.id === JT ? null : loader.reach(g.goal.id, ref.id)]);
+    const reach = toward ?? reachIn(person, g.mode);
+    const graded = grade(from.dist, reach.dist);
+    g.moves.push({ film, person, reach, grade: graded, hinted: g.hint !== null });
     g.film = null;
     g.filter = '';
     g.hint = null;
     view.hintTrouble = '';
-    feel(person.id === JT ? 'win' : graded);
-    if (person.id === JT) {
+    const won = person.id === g.goal.id;
+    feel(won ? 'win' : graded);
+    if (won) {
       g.busy = false;
       await finish(g, false);
       game = null;
@@ -542,14 +565,14 @@ export function showHint(): void {
   };
   view.hintTrouble = '';
   if (!g.day || !online) {
-    const { parentFilm, parentPerson } = reachIn(here, g.mode);
+    const { parentFilm, parentPerson } = reachHere(g);
     show({ film: parentFilm, person: parentPerson });
     return renderPlay();
   }
   const gen = currentGeneration();
   g.busy = true;
   renderPlay();
-  dailyHint(g.day, here.id)
+  dailyHint(g.day, g.mode, here.id)
     .then(
       (step) => {
         if (current(g) === here) show(step);
@@ -566,7 +589,7 @@ export function showHint(): void {
 
 export function giveUp(): Promise<void> {
   return guarded(async (g) => {
-    const rest = await optimalPath(current(g), loader, g.mode);
+    const rest = await optimalPath(current(g), loader, g.goal);
     g.busy = false;
     await finish(g, true, rest);
     game = null;

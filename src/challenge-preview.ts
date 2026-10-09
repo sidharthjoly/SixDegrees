@@ -15,8 +15,9 @@ export const DAILY_PAGE_RE = /^\/d\/\d{4}-\d{2}-\d{2}\/(hard\/)?$/;
 /** The title for a challenge code on a page in `pageMode`, or null if the code isn't usable there. */
 export function challengeTitle(code: string, pageMode: Mode): string | null {
   const c = decodeChallenge(code);
-  // A code for the other mode would describe a different puzzle; the game says so too.
-  if (!c || c.mode !== pageMode) return null;
+  // A code for the other mode, or for free play towards another star, would describe a
+  // different puzzle; the game says so too.
+  if (!c || c.mode !== pageMode || c.target !== undefined) return null;
   const who = c.name ?? 'Your friend';
   const hard = c.mode === 'hard' ? ' in hard mode' : '';
   if (c.gaveUp) {

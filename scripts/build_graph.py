@@ -6,6 +6,7 @@ path back to him. Among equally short paths it prefers the one whose least-known
 film is best known (Wikipedia sitelinks), so revealed answers use recognisable films.
 
 A second BFS does the same for hard mode, where JT's best-known films are banned.
+One more per star in TARGETS gives free play its other goals (normal mode only).
 
 Output goes to public/data/v/<version>/, where <version> is a hash of the contents, and
 public/data/version.json names it. Vite compiles that version into the bundle, so a
@@ -22,6 +23,8 @@ versa), and an unchanged rebuild keeps the same URLs.
                            [[film, title, year, sitelinks]...],
                            hardDist, hardParentFilm, hardParentPerson]
   f/NN.json        qid -> [title, year, sitelinks, [[person, name, sitelinks]...]]
+  t/<star>/NN.json qid -> [dist, parentFilm, parentPerson]: the same as a person row's
+                   first steps, but towards one of the TARGETS. NN is qid % TARGET_SHARDS.
 
 Shard NN is qid % SHARDS, so the client fetches one small file per lookup. Film titles
 and cast names are inlined (best known first) so a list renders from a single shard.
@@ -72,6 +75,25 @@ HARD_BANNED = [
     629596,  # Friends with Benefits
     798797,  # Bad Teacher
 ]
+
+# The other stars free play can head for. JT stays the game: dailies, hard mode and the
+# online features are his alone. Pinned like the hard-mode bans, so the list only changes
+# when this does; a star who drops out of JT's part of the graph is skipped with a warning.
+TARGETS = [
+    3454165,  # Kevin Bacon
+    2263,  # Tom Hanks
+    172678,  # Samuel L. Jackson
+    873,  # Meryl Streep
+    34436,  # Scarlett Johansson
+    38111,  # Leonardo DiCaprio
+    37079,  # Tom Cruise
+    40096,  # Will Smith
+    36949,  # Robert De Niro
+    189489,  # Zendaya
+]
+# Fewer, bigger shards than p/: a row here is three numbers, so one move still costs a
+# download of about 3 KB gzipped, without ten more sets of 4096 files.
+TARGET_SHARDS = 1024
 
 MAX_ALIASES = 3
 MAX_ALIAS_LENGTH = 24  # nicknames, not full legal names nobody searches for
@@ -167,12 +189,13 @@ def load_aliases(people, wanted) -> dict[int, list[str]]:
     return {p: sorted(names.values(), key=lambda a: (len(a), a))[:MAX_ALIASES] for p, names in found.items()}
 
 
-def bfs(films, people, cast, credits):
-    """Layered BFS from JT. best[p] = (weakest film sitelinks, total sitelinks) of p's chosen path."""
-    dist = {JT: 0}
+def bfs(films, people, cast, credits, source=JT):
+    """Layered BFS from source (JT unless given). best[p] = (weakest film sitelinks, total
+    sitelinks) of p's chosen path."""
+    dist = {source: 0}
     parent: dict[int, tuple[int, int]] = {}
-    best = {JT: (10**9, 0)}
-    layer = [JT]
+    best = {source: (10**9, 0)}
+    layer = [source]
     while layer:
         candidates: dict[int, tuple[tuple[int, int], int, int]] = {}
         for q in layer:
@@ -194,13 +217,13 @@ def bfs(films, people, cast, credits):
     return dist, parent
 
 
-def verify(dist, parent, cast, credits) -> None:
-    """Every parent pointer must be a real shared credit one step closer to JT."""
+def verify(dist, parent, cast, credits, source=JT) -> None:
+    """Every parent pointer must be a real shared credit one step closer to source."""
     for p, (f, q) in parent.items():
         if f not in credits[p] or q not in cast[f] or dist[q] != dist[p] - 1:
             sys.exit(f"FAIL: bad parent pointer Q{p} -> Q{f} -> Q{q}")
-    if len(parent) != len(dist) - 1:
-        sys.exit("FAIL: someone besides JT has no parent pointer")
+    if len(parent) != len(dist) - 1 or source in parent:
+        sys.exit(f"FAIL: someone besides Q{source} has no parent pointer")
 
 
 def daily_pool(dist, parent, hard_dist, films, people, credits) -> list[int]:
@@ -321,6 +344,26 @@ def main() -> None:
     for p in (RONALDO, JT):
         print(f"  aliases for {people[p][0]}: {aliases.get(p)}")
 
+    # Free play's other stars: one more BFS each. JT's part of the graph is one connected
+    # piece, so every star in it reaches exactly the people JT does.
+    targets = []
+    for t in TARGETS:
+        if t not in dist:
+            print(f"warning: target Q{t} is no longer linked to JT, so free play drops them")
+            continue
+        t_dist, t_parent = bfs(films, people, cast, credits, t)
+        verify(t_dist, t_parent, cast, credits, t)
+        if t_dist.keys() != dist.keys():
+            sys.exit(f"FAIL: {people[t][0]} doesn't reach the same people JT does")
+        tshards: list[dict] = [{} for _ in range(TARGET_SHARDS)]
+        for p, d in t_dist.items():
+            f, q = t_parent.get(p, (0, 0))
+            tshards[p % TARGET_SHARDS][p] = [d, f, q]
+        size = sum(write_json(stage / "t" / str(t) / f"{i}.json", s) for i, s in enumerate(tshards))
+        targets.append({"id": t, "name": people[t][0], "film": films[by_fame(credits[t], films, 2)[0]][0]})
+        t_hist = collections.Counter(t_dist.values())
+        print(f"to {people[t][0]}: {size / 1e6:.1f} MB raw, by distance {dict(sorted(t_hist.items()))}")
+
     daily = daily_pool(dist, parent, hard_dist, films, people, credits)
     if RONALDO not in daily:
         print("warning: Cristiano Ronaldo is no longer in the daily pool")
@@ -337,6 +380,8 @@ def main() -> None:
             "jt": JT,
             "bacon": dist.get(KEVIN_BACON),
             "shards": SHARDS,
+            "targets": targets,
+            "targetShards": TARGET_SHARDS,
         },
     )
     by_par = collections.Counter(dist[p] for p in daily)

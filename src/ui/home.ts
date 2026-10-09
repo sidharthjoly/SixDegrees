@@ -1,11 +1,12 @@
-import { getPerson, loadMeta, loadSearch, loadSearchTop } from '../data';
+import { dailyStar, getPerson, loadMeta, loadSearch, loadSearchTop, type StarDaily } from '../data';
 import { JT, dailyPick, dayKey, dayNumber, emojiRow, makeSearch, plural, shareText, type SearchHit } from '../logic';
 import { online } from '../online';
 import { href } from '../router';
-import { loadDaily, type DailyRecord } from '../storage';
-import type { Meta, Person, Qid } from '../types';
+import { loadDaily, loadTarget, saveTarget, type DailyRecord } from '../storage';
+import type { Meta, Mode, Person, Qid, Target } from '../types';
 import { h, yearOf, type Child } from './dom';
 import { groupsCard } from './groups';
+import { dropdown } from './menu';
 import { puzzleUrl, shareButton } from './share';
 import { startHomeFx } from './homefx';
 import { app, go, isCurrent, randomStart, renderLoading, tickerSlot } from './shell';
@@ -44,12 +45,13 @@ export async function renderHome(gen: number): Promise<void> {
   renderLoading();
   const meta = await loadMeta();
   const day = dayKey(new Date());
-  const daily = await getPerson(dailyPick(meta.daily, day));
+  // The star daily is a nice-to-have here: if its files won't load, the card just goes without.
+  const [daily, star] = await Promise.all([getPerson(dailyPick(meta.daily, day)), dailyStar(day).catch(() => null)]);
   if (!isCurrent(gen)) return;
   document.title = 'Six Degrees of Justin Timberlake';
-  const played = (mode: 'normal' | 'hard') => {
+  const played = (mode: Mode) => {
     const rec = loadDaily(day, mode);
-    return rec?.start === daily.id ? rec : null;
+    return rec?.start === daily.id && (mode !== 'star' || rec.target === star?.star.id) ? rec : null;
   };
   tickerSlot.replaceChildren(ticker(meta));
   const home = h(
@@ -65,9 +67,9 @@ export async function renderHome(gen: number): Promise<void> {
         `${meta.people.toLocaleString()} actors, athletes and filmmakers, all linked to JT through ${meta.films.toLocaleString()} films. `,
         'Pick a film, pick a co-star, and keep going until you land on Justin.',
       ),
-      dailyCard(day, daily, played('normal'), played('hard')),
+      dailyCard(day, daily, played('normal'), played('hard'), star, played('star')),
       groupsCard() ?? '',
-      startCard(),
+      startCard(meta),
     ),
     h('div', { class: 'home-side' }, h('h2', { class: 'section-label' }, 'How to play · Top 3'), howTo(meta), histogram(meta)),
   );
@@ -86,7 +88,7 @@ export async function renderHome(gen: number): Promise<void> {
   introDone = true;
 }
 
-function dailyCard(day: string, person: Person, played: DailyRecord | null, playedHard: DailyRecord | null): HTMLElement {
+function dailyCard(day: string, person: Person, played: DailyRecord | null, playedHard: DailyRecord | null, star: StarDaily | null, playedStar: DailyRecord | null): HTMLElement {
   const n = dayNumber(day);
   const knownFor = person.films[0];
   // Names run from "Pelé" to "Edward Grey, 1st Viscount Grey of Fallodon"; the starburst's
@@ -112,6 +114,16 @@ function dailyCard(day: string, person: Person, played: DailyRecord | null, play
         : h('a', { href: hardHref }, 'Try it in hard mode'),
       ' · no hints, and JT’s five best-known films are banned',
     ),
+    // For anyone who'd rather not end up at JT: the same start, heading for the day's star.
+    star &&
+      (playedStar
+        ? h('p', { class: 'hard-link' }, `Star daily, to ${star.star.name}: ${playedStar.gaveUp ? 'gave up' : plural(playedStar.moves.length, 'film')} ${emojiRow(playedStar.moves)} · par ${star.par}`)
+        : h(
+            'div',
+            { class: 'star-row' },
+            h('a', { href: href({ name: 'daily', day, mode: 'star', vs: null }), class: 'btn', 'aria-describedby': 'star-note' }, 'Not a JT fan?'),
+            h('span', { class: 'star-note', id: 'star-note' }, `Head for ${star.star.name} instead · par ${star.par}`),
+          )),
   );
   return h(
     'section',
@@ -224,14 +236,21 @@ function pickStars(n: number, random = Math.random): [Qid, string][] {
   return pool.slice(0, n);
 }
 
-function startCard(): HTMLElement {
+/** The star the switch last turned to this visit, so turning it back on returns to them. */
+let lastStar: Qid | undefined;
+
+function startCard(meta: Meta): HTMLElement {
   const results = h('ul', { class: 'results', id: 'search-results' });
   let search: ((q: string, limit?: number) => SearchHit[]) | null = null;
   /** Searching the full list, not just the best-known names that answer first. */
   let complete = false;
   let loading: Promise<void> | null = null;
   let top: SearchHit | undefined;
-  const playHref = (qid: Qid) => href({ name: 'play', qid, mode: 'normal', vs: null });
+  const stars = meta.targets;
+  const saved = loadTarget();
+  /** The other star free play heads for; undefined for JT. A rebuild may have dropped a saved one. */
+  let target = stars.find((t) => t.id === saved)?.id;
+  const playHref = (qid: Qid) => href({ name: 'play', qid, mode: 'normal', vs: null, target });
 
   const show = (q: string) => {
     if (!search) return;
@@ -246,7 +265,8 @@ function startCard(): HTMLElement {
             'button',
             { class: 'option', type: 'button', onclick: () => go(playHref(row[0])) },
             h('span', { class: 'opt-main' }, row[1], alias && h('span', { class: 'opt-alias' }, ` “${alias}”`), h('span', { class: 'opt-sub' }, row[4])),
-            h('span', { class: 'opt-meta' }, row[0] === JT ? '★' : `par ${row[3]}`),
+            // Search rows carry the distance to JT only.
+            h('span', { class: 'opt-meta' }, row[0] === (target ?? JT) ? '★' : target ? '' : `par ${row[3]}`),
           ),
         ),
       ),
@@ -292,18 +312,81 @@ function startCard(): HTMLElement {
     },
   });
 
+  // One spare, for when the star being headed for is among the picks.
+  const picks = pickStars(6);
+  const chips = h('div', { class: 'chips' });
+  const drawChips = () =>
+    chips.replaceChildren(
+      ...picks
+        .filter(([id]) => id !== target)
+        .slice(0, 5)
+        .map(([id, name]) => h('a', { class: 'chip', href: playHref(id) }, name)),
+      h('button', { class: 'chip shuffle', type: 'button', onclick: () => void randomStart('normal', target) }, 'Shuffle'),
+    );
+  drawChips();
+
   return h(
     'section',
     { class: 'card' },
+    stars.length > 0 &&
+      goalSwitch(stars, target, (id) => {
+        target = id;
+        if (id) lastStar = id;
+        saveTarget(id ?? null);
+        drawChips();
+        show(input.value);
+      }),
     h('label', { class: 'label', for: 'start-search' }, 'Free play: pick any star'),
     input,
     results,
-    h(
-      'div',
-      { class: 'chips' },
-      ...pickStars(5).map(([id, name]) => h('a', { class: 'chip', href: playHref(id) }, name)),
-      h('button', { class: 'chip shuffle', type: 'button', onclick: () => void randomStart() }, 'Shuffle'),
-    ),
+    chips,
+  );
+}
+
+/**
+ * Free play's switch: head for JT, as the game is built around, or for one of the other stars.
+ * (The daily has its own way to another star: the star daily.)
+ */
+function goalSwitch(stars: Target[], initial: Qid | undefined, onChange: (target: Qid | undefined) => void): HTMLElement {
+  let target = initial;
+  const toggle = (label: string, choose: () => void) => h('button', { type: 'button', class: 'chip', onclick: choose }, label);
+  const jt = toggle('Justin Timberlake', () => set(undefined));
+  const other = toggle('Another star', () => set(target ?? lastStar ?? stars[0].id));
+  const menu = dropdown({
+    id: 'goal-star',
+    labelledBy: 'goal-label',
+    items: stars.map((t) => ({ value: t.id, label: t.name, sub: `Known for ${t.film}` })),
+    value: target ?? stars[0].id,
+    onChange: (id) => set(id),
+  });
+  const known = h('em');
+  const pick = h('div', { class: 'goal-pick' }, menu.el, h('span', { class: 'muted' }, 'Known for ', known));
+
+  const sync = () => {
+    jt.classList.toggle('on', !target);
+    jt.setAttribute('aria-pressed', String(!target));
+    other.classList.toggle('on', !!target);
+    other.setAttribute('aria-pressed', String(!!target));
+    const star = stars.find((t) => t.id === target);
+    pick.hidden = !star;
+    if (star) {
+      menu.set(star.id);
+      known.textContent = star.film;
+    }
+  };
+  function set(id: Qid | undefined): void {
+    if (id === target) return;
+    target = id;
+    sync();
+    onChange(id);
+  }
+  sync();
+  return h(
+    'div',
+    { class: 'goal-switch' },
+    h('p', { class: 'label', id: 'goal-label' }, 'Heading for'),
+    h('div', { class: 'chips', role: 'group', 'aria-labelledby': 'goal-label' }, jt, other),
+    pick,
   );
 }
 

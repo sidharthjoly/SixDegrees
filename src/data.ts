@@ -1,4 +1,5 @@
-import type { Film, FilmRow, Loader, Meta, Person, PersonRow, Qid, SearchRow } from './types';
+import { dailyPick, starOfDay } from './logic';
+import type { Film, FilmRow, Loader, Meta, Person, PersonRow, Qid, Reach, SearchRow, Target, TargetRow } from './types';
 
 /**
  * Data lives under a content-hashed folder whose name is compiled into the bundle, so a
@@ -51,7 +52,10 @@ const MAX_SHARDS = 1200;
 
 async function row<T>(kind: 'p' | 'f', id: Qid): Promise<T | undefined> {
   const { shards } = await loadMeta();
-  const path = `${kind}/${id % shards}.json`;
+  return shardRow<T>(`${kind}/${id % shards}.json`, id);
+}
+
+async function shardRow<T>(path: string, id: Qid): Promise<T | undefined> {
   const cached = shardCache.get(path);
   if (cached) {
     shardCache.delete(path);
@@ -89,4 +93,39 @@ export async function getFilm(id: Qid): Promise<Film> {
   return { id, title, year, fame, cast: cast.map(([pid, name, fame]) => ({ id: pid, name, fame })) };
 }
 
-export const loader: Loader = { person: getPerson, film: getFilm };
+/** How far someone is from one of the other stars free play can head for (meta.targets). */
+export async function getReach(target: Qid, id: Qid): Promise<Reach> {
+  const { targetShards } = await loadMeta();
+  const r = await shardRow<TargetRow>(`t/${target}/${id % targetShards}.json`, id);
+  if (!r) throw new Error(`No one with id Q${id} is connected to Q${target}`);
+  return reach(...r);
+}
+
+export const loader: Loader = { person: getPerson, film: getFilm, reach: getReach };
+
+/** The day's star daily: its start, its star and par, or null when no star will do (see starOfDay). */
+export interface StarDaily {
+  start: Qid;
+  star: Target;
+  par: number;
+}
+
+/**
+ * The star daily for `day`, picked as the Worker picks it when it checks a result
+ * (src/route-check.ts): someone without a row towards a star is Infinity away.
+ */
+export async function dailyStar(day: string): Promise<StarDaily | null> {
+  const meta = await loadMeta();
+  const start = dailyPick(meta.daily, day);
+  const found = await starOfDay(
+    meta.targets.map((t) => t.id),
+    day,
+    start,
+    async (star) => {
+      const r = await shardRow<TargetRow>(`t/${star}/${start % meta.targetShards}.json`, start);
+      return r && r[0] >= 0 ? r[0] : Infinity;
+    },
+  );
+  const star = found && meta.targets.find((t) => t.id === found.id);
+  return found && star ? { start, star, par: found.par } : null;
+}

@@ -32,6 +32,15 @@ const variants: Record<string, Challenge> = {
   'big qids': { ...finished, path: [[123_456_789, 98_765_432], [130_000_000, JT]], moves: [m('closer'), m('closer')] },
 };
 
+// The same game, but free play towards Kevin Bacon: Ronaldo -> Goal III -> Beckham -> ... -> Bacon.
+const BACON = 3454165;
+const toStar: Challenge = { ...finished, target: BACON, path: [[3, 10], [2, 13], [2, 11], [7, BACON]] };
+const starVariants: Record<string, Challenge> = {
+  'to a star': toStar,
+  'to a star, gave up': { ...toStar, moves: [m('closer'), m('further')], path: [[3, 10], [4, JT]], gaveUp: true },
+  'to a star, from JT': { ...toStar, start: JT, moves: [m('closer')], path: [[7, BACON]] },
+};
+
 const b64 = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
 describe('challenge codes', () => {
@@ -42,6 +51,22 @@ describe('challenge codes', () => {
     // URL-safe as-is: nothing for encodeURIComponent to escape.
     expect(encodeURIComponent(code)).toBe(code);
     expect(decodeChallenge(code)).toEqual(c);
+  });
+
+  it.each(Object.entries(starVariants))('round-trip as format 2: %s', (_label, c) => {
+    const code = encodeChallenge(c)!;
+    expect(code).toMatch(/^2\./);
+    expect(code).toMatch(/[0-9a-z]$/);
+    expect(decodeChallenge(code)).toEqual(c);
+  });
+
+  it('stay format 1 for JT, so older copies of the game read them', () => {
+    expect(encodeChallenge({ ...finished, target: JT })).toBe(encodeChallenge(finished));
+    expect(encodeChallenge(finished)).toMatch(/^1\./);
+  });
+
+  it('refuse hard mode towards another star', () => {
+    expect(encodeChallenge({ ...toStar, mode: 'hard', moves: toStar.moves.map((x) => ({ ...x, hinted: false })) })).toBeNull();
   });
 
   it('survive the router', () => {
@@ -114,6 +139,7 @@ describe('decodeChallenge rejects', () => {
 
   it('an unknown version', () => {
     expect(decodeChallenge(edit(0, '2'))).toBeNull();
+    expect(decodeChallenge(edit(0, '3'))).toBeNull();
   });
 
   it('bad start QIDs', () => {
@@ -179,6 +205,38 @@ describe('decodeChallenge rejects', () => {
     ]) {
       expect(decodeChallenge(edit(5, bad))).toBeNull();
     }
+  });
+});
+
+describe('decodeChallenge rejects, in format 2', () => {
+  const good = encodeChallenge(toStar)!;
+  const fields = good.split('.').slice(0, 7);
+  const sign = (f: string[]) => `${f.join('.')}.${checksum(f.join('.'))}`;
+  const edit = (i: number, value: string) => sign(fields.map((f, j) => (j === i ? value : f)));
+  const star = BACON.toString(36);
+
+  it('nothing it should accept (the helpers work)', () => {
+    expect(sign(fields)).toBe(good);
+    expect(decodeChallenge(edit(1, JT.toString(36)))?.start).toBe(JT);
+  });
+
+  it('a star that is JT (his games are format 1), the start, or no QID at all', () => {
+    for (const bad of [JT.toString(36), toStar.start.toString(36), '', '0', 'A1']) expect(decodeChallenge(edit(2, bad))).toBeNull();
+  });
+
+  it('hard mode, which is JT’s alone', () => {
+    const hard = fields.map((f, i) => (i === 3 ? 'hf' : i === 4 ? f.toLowerCase() : f));
+    expect(decodeChallenge(sign(hard))).toBeNull();
+  });
+
+  it('a finished path that doesn’t end on the star, or passes through them', () => {
+    expect(decodeChallenge(edit(5, `3-a_2-d_2-b_7-${star}`))).not.toBeNull();
+    expect(decodeChallenge(edit(5, `3-a_2-d_2-b_7-${JT.toString(36)}`))).toBeNull();
+    expect(decodeChallenge(edit(5, `3-${star}_2-d_2-b_7-${star}`))).toBeNull();
+  });
+
+  it('a format 2 code without its star', () => {
+    expect(decodeChallenge(sign(fields.filter((_, i) => i !== 2)))).toBeNull();
   });
 });
 

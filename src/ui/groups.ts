@@ -275,9 +275,12 @@ function joinCard(board: GroupBoard, day: string): HTMLElement {
   );
 }
 
+/** A member's result for the day in `mode`; a server without the star daily sends none for it. */
+const resultIn = (m: GroupMember, mode: Mode) => m[mode] ?? null;
+
 /** Members ranked by a mode's result for the day, ties keeping the join order. */
 export function ranked(members: GroupMember[], mode: Mode): GroupMember[] {
-  return [...members].sort((a, b) => compareResults(a[mode], b[mode]));
+  return [...members].sort((a, b) => compareResults(resultIn(a, mode), resultIn(b, mode)));
 }
 
 function boardList(members: GroupMember[], mode: Mode, limit = Infinity): HTMLElement {
@@ -286,8 +289,8 @@ function boardList(members: GroupMember[], mode: Mode, limit = Infinity): HTMLEl
   // Joint places share a number, like a chart.
   let place = 0;
   const items = shown.map((m, i) => {
-    if (i === 0 || compareResults(rows[i - 1][mode], m[mode]) !== 0) place = i + 1;
-    const r = m[mode];
+    if (i === 0 || compareResults(resultIn(rows[i - 1], mode), resultIn(m, mode)) !== 0) place = i + 1;
+    const r = resultIn(m, mode);
     return h(
       'li',
       { class: 'board-row' + (m.me ? ' me' : '') + (r ? '' : ' unplayed') },
@@ -300,14 +303,15 @@ function boardList(members: GroupMember[], mode: Mode, limit = Infinity): HTMLEl
 }
 
 function todayCard(board: GroupBoard, day: string, mode: Mode, redraw: (mode: Mode) => void): HTMLElement {
-  const anyHard = board.members.some((m) => m.hard);
-  const played = board.members.filter((m) => m[mode]).length;
+  // The other modes' tabs only once someone has played one.
+  const anyOther = board.members.some((m) => m.hard || m.star);
+  const played = board.members.filter((m) => resultIn(m, mode)).length;
   const tab = (m: Mode, label: string) => h('button', { type: 'button', class: 'chip' + (m === mode ? ' on' : ''), 'aria-pressed': String(m === mode), onclick: () => redraw(m) }, label);
   return h(
     'section',
     { class: 'card group-today' },
     h('h2', null, `Daily #${dayNumber(day)}`),
-    anyHard || mode === 'hard' ? h('div', { class: 'chips', role: 'group', 'aria-label': 'Mode' }, tab('normal', 'Normal'), tab('hard', 'Hard')) : null,
+    anyOther || mode !== 'normal' ? h('div', { class: 'chips', role: 'group', 'aria-label': 'Mode' }, tab('normal', 'Normal'), tab('hard', 'Hard'), tab('star', 'Star')) : null,
     h('p', { class: 'muted' }, played ? `${played} of ${plural(board.members.length, 'member')} played` : 'Nobody has played yet today.'),
     boardList(board.members, mode),
   );
@@ -319,7 +323,7 @@ function weekCard(board: GroupBoard): HTMLElement {
     'section',
     { class: 'card group-week' },
     h('h2', null, 'This week'),
-    h('p', { class: 'muted' }, 'The last seven dailies in normal mode: 3 points for par, 2 for one over, 1 for two over.'),
+    h('p', { class: 'muted' }, 'The last seven dailies, JT’s or the star’s, whichever went better: 3 points for par, 2 for one over, 1 for two over.'),
     h(
       'table',
       { class: 'week-table' },

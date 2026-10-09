@@ -109,6 +109,12 @@ a.arc-mode:active {
   color: #111111;
 }
 
+/* The star daily's chip is lime, like its pill on the play screen. */
+.arc-mode.star .arc-mode-name {
+  background: var(--lime);
+  color: #111111;
+}
+
 .arc-detail {
   display: flex;
   flex: 1;

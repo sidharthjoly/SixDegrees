@@ -1,5 +1,5 @@
 import { CARD_FONTS, STORY_HEIGHT, STORY_WIDTH, drawResultCard, drawStory, resultCardSize, type CardStep, type ResultCard, type StoryCard } from '../card';
-import { dayNumber, fold } from '../logic';
+import { JT, dayNumber, fold } from '../logic';
 import { displaySite, pagePath } from '../preview-pages';
 import { href } from '../router';
 import type { Mode, Qid } from '../types';
@@ -11,18 +11,27 @@ export const siteBase = () => `${location.origin}${location.pathname.replace(/[^
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/**
- * The part of a puzzle link after the site root. With `staticPages` (production builds) a
- * daily links to its page under d/<date>/, which carries that day's link-preview tags and
- * forwards to the game (scripts/previews.ts); otherwise it's the hash route.
- */
-export function puzzlePath(p: { day: string | null; start: Qid; mode: Mode }, staticPages: boolean): string {
-  if (p.day && staticPages && DAY_RE.test(p.day)) return pagePath(p.day, p.mode);
-  return p.day ? href({ name: 'daily', day: p.day, mode: p.mode, vs: null }) : href({ name: 'play', qid: p.start, mode: p.mode, vs: null });
+/** A puzzle: the day's daily, or free play from `start` (towards `target`, one of the other stars, if given). */
+export interface Puzzle {
+  day: string | null;
+  start: Qid;
+  mode: Mode;
+  target?: Qid;
 }
 
-/** Link that replays the same puzzle: the day's daily, or free play from the same person. */
-export function puzzleUrl(p: { day: string | null; start: Qid; mode: Mode }): string {
+/**
+ * The part of a puzzle link after the site root. With `staticPages` (production builds) a
+ * JT daily links to its page under d/<date>/, which carries that day's link-preview tags and
+ * forwards to the game (scripts/previews.ts); otherwise, star dailies included, it's the hash
+ * route.
+ */
+export function puzzlePath(p: Puzzle, staticPages: boolean): string {
+  if (p.day && staticPages && DAY_RE.test(p.day) && p.mode !== 'star') return pagePath(p.day, p.mode);
+  return p.day ? href({ name: 'daily', day: p.day, mode: p.mode, vs: null }) : href({ name: 'play', qid: p.start, mode: p.mode, vs: null, target: p.target });
+}
+
+/** Link that replays the same puzzle: the day's daily, or free play from the same person to the same star. */
+export function puzzleUrl(p: Puzzle): string {
   return siteBase() + puzzlePath(p, import.meta.env.PROD);
 }
 
@@ -75,6 +84,7 @@ export function resultCard(ctx: ResultContext, withPath: boolean, site: string):
     label: ctx.day ? `Daily #${dayNumber(ctx.day)}` : 'Free play',
     hard: ctx.mode === 'hard',
     start: ctx.start.name,
+    goal: ctx.goal.name,
     par: ctx.par,
     moves: ctx.moves.map((m) => ({ grade: m.grade, hinted: m.hinted })),
     gaveUp: ctx.gaveUp,
@@ -87,16 +97,18 @@ export function resultCard(ctx: ResultContext, withPath: boolean, site: string):
 export function cardAlt(card: ResultCard): string {
   const moves = card.moves.map((m) => GRADE_WORDS[m.grade] + (m.hinted ? ' with a hint' : '')).join(', ');
   const result = card.gaveUp ? `gave up after ${card.moves.length}` : `${card.moves.length}`;
-  const parts = [`${card.label}${card.hard ? ', hard mode' : ''}. ${card.start} to Justin Timberlake: ${result} ${card.moves.length === 1 ? 'film' : 'films'}, par ${card.par}.`];
+  const parts = [`${card.label}${card.hard ? ', hard mode' : ''}. ${card.start} to ${card.goal}: ${result} ${card.moves.length === 1 ? 'film' : 'films'}, par ${card.par}.`];
   if (moves) parts.push(`Moves: ${moves}.`);
   if (card.path) parts.push(`Path: ${card.path.map((s) => `${s.film}${s.year ? ` (${s.year})` : ''} with ${s.person}`).join('; ')}.`);
   return parts.join(' ');
 }
 
 /** The square image's file name; `kind` names the story image and the video after it. */
-export function fileName(ctx: Pick<ResultContext, 'day' | 'mode' | 'start'>, kind: 'square' | 'story' | 'video' = 'square'): string {
-  const which = ctx.day ? String(dayNumber(ctx.day)) : fold(ctx.start.name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'free-play';
-  const base = `six-degrees-jt-${which}${ctx.mode === 'hard' ? '-hard' : ''}`;
+export function fileName(ctx: Pick<ResultContext, 'day' | 'mode' | 'start' | 'goal'>, kind: 'square' | 'story' | 'video' = 'square'): string {
+  const slug = (name: string) => fold(name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const which = ctx.day ? String(dayNumber(ctx.day)) : slug(ctx.start.name) || 'free-play';
+  const goal = ctx.goal.id === JT ? 'jt' : slug(ctx.goal.name) || 'star';
+  const base = `six-degrees-${goal}-${which}${ctx.mode === 'hard' ? '-hard' : ''}`;
   return kind === 'video' ? `${base}.mp4` : `${base}${kind === 'story' ? '-story' : ''}.png`;
 }
 

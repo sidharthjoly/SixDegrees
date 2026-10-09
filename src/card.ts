@@ -177,6 +177,8 @@ export interface ResultCard {
   label: string;
   hard: boolean;
   start: string;
+  /** Who the game headed for; Justin Timberlake when left out. */
+  goal?: string;
   par: number;
   moves: CardMove[];
   gaveUp: boolean;
@@ -198,6 +200,10 @@ export interface PreviewCard {
 }
 
 const films = (n: number) => `${n} ${n === 1 ? 'film' : 'films'}`;
+
+const goalOf = (c: Pick<ResultCard, 'goal'>) => c.goal ?? 'Justin Timberlake';
+/** The band across the top: "SIX DEGREES OF JUSTIN TIMBERLAKE", or of the star free play headed for. */
+const bandTitle = (c: Pick<ResultCard, 'goal'>) => `SIX DEGREES OF ${goalOf(c).toUpperCase()}`;
 
 /** "4 films · par 3", or "Gave up after 4 films · par 3". */
 export function scoreLine(c: Pick<ResultCard, 'moves' | 'par' | 'gaveUp'>): string {
@@ -523,7 +529,7 @@ export function resultCardSize(c: ResultCard): { width: number; height: number }
 export function drawResultCard(ctx: Ctx, c: ResultCard): void {
   const { width: W, height: H } = resultCardSize(c);
   background(ctx, W, H);
-  band(ctx, 0, W, 76, 'SIX DEGREES OF JUSTIN TIMBERLAKE', 26, true);
+  band(ctx, 0, W, 76, bandTitle(c), 26, true);
 
   sticker(ctx, 300, 352, 480, c.label, c.start, `Par ${c.par}`);
   if (c.hard) {
@@ -536,8 +542,10 @@ export function drawResultCard(ctx: Ctx, c: ResultCard): void {
 
   // "→ Justin Timberlake", the goal, beside the sticker.
   arrow(ctx, 600, 250, 170, 40);
-  outlinedText(ctx, 'JUSTIN', 600, 360, 50);
-  outlinedText(ctx, 'TIMBERLAKE', 600, 428, 50);
+  // TIMBERLAKE at 50px is 425px wide, so the space it has always had stays its own.
+  const goal = goalLines(ctx, goalOf(c), W - 600 - 40, 50);
+  const step = goal.size * 1.36;
+  goal.lines.forEach((line, i) => outlinedText(ctx, line, 600, Math.round(394 + (i - (goal.lines.length - 1) / 2) * step), goal.size));
 
   // The score panel: result line, grade squares, legend.
   const px = 60;
@@ -795,6 +803,19 @@ function transformed(ctx: Ctx, o: { cx: number; cy: number; s?: number; dx?: num
 }
 
 /** outlinedText, centred on cx. */
+/**
+ * A goal's name in big outlined capitals: the first name over the rest ("JUSTIN" over
+ * "TIMBERLAKE", "ROBERT" over "DE NIRO"), stepping down from `max` until both lines fit.
+ */
+function goalLines(ctx: Ctx, name: string, maxWidth: number, max: number): { lines: string[]; size: number } {
+  const [first, ...rest] = name.toUpperCase().split(' ');
+  const lines = rest.length > 0 ? [first, rest.join(' ')] : [first];
+  const measure = measureWith(ctx, display);
+  let size = max;
+  while (size > 24 && lines.some((l) => measure(l, size) > maxWidth)) size--;
+  return { lines, size };
+}
+
 function outlinedCentred(ctx: Ctx, s: string, cx: number, y: number, size: number): void {
   ctx.font = display(size);
   outlinedText(ctx, s, cx - (ctx.measureText(s).width + size * 0.12) / 2, y, size);
@@ -806,7 +827,7 @@ export function drawStory(ctx: Ctx, c: StoryCard, at = Infinity): void {
   const plan = storyPlan(c);
   const withPath = !!c.path;
   background(ctx, W, H);
-  band(ctx, 96, W, 80, 'SIX DEGREES OF JUSTIN TIMBERLAKE', 26, true);
+  band(ctx, 96, W, 80, bandTitle(c), 26, true);
 
   // The sticker lands with a spin and a little overshoot.
   const size = withPath ? 470 : 640;
@@ -833,8 +854,9 @@ export function drawStory(ctx: Ctx, c: StoryCard, at = Infinity): void {
       ctx.rotate(Math.PI / 2);
       arrow(ctx, 0, 0, 105, 40);
       ctx.restore();
-      outlinedCentred(ctx, 'JUSTIN', W / 2, 1096, 66);
-      outlinedCentred(ctx, 'TIMBERLAKE', W / 2, 1172, 66);
+      const goal = goalLines(ctx, goalOf(c), W - 160, 66);
+      const step = goal.size * 1.15;
+      goal.lines.forEach((line, i) => outlinedCentred(ctx, line, W / 2, Math.round(1134 + (i - (goal.lines.length - 1) / 2) * step), goal.size));
     });
   }
 

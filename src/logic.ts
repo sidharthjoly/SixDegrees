@@ -1,6 +1,7 @@
-import type { FilmRef, Loader, Mode, Person, Qid, Reach, SearchRow } from './types';
+import type { FilmRef, Loader, Meta, Mode, Person, Qid, Reach, SearchRow } from './types';
 
 export const JT: Qid = 43432;
+export const JT_NAME = 'Justin Timberlake';
 
 /** Daily #1. */
 export const EPOCH = '2026-10-08';
@@ -10,18 +11,84 @@ export interface Step {
   person: Person;
 }
 
+/**
+ * Who a game heads for: JT, in either mode, or in free play one of the other stars in
+ * meta.json's targets (normal mode only, since hard mode is about JT's own films).
+ */
+export interface Goal {
+  id: Qid;
+  name: string;
+  mode: Mode;
+}
+
+export const jtGoal = (mode: Mode = 'normal'): Goal => ({ id: JT, name: JT_NAME, mode });
+
+/**
+ * The goal a game heads for: JT when it names no one (or JT), otherwise one of the build's
+ * other stars, in normal mode (free play) or the star daily. Null for anyone else, for another
+ * star in hard mode, and for a star daily without its star.
+ */
+export function goalFor(meta: Pick<Meta, 'targets'>, target: Qid | undefined, mode: Mode): Goal | null {
+  if (target === undefined || target === JT) return mode === 'star' ? null : jtGoal(mode);
+  const star = meta.targets.find((t) => t.id === target);
+  return star && mode !== 'hard' ? { id: star.id, name: star.name, mode } : null;
+}
+
+/** The star daily's star, and its par from the day's start. */
+export interface DayStar {
+  id: Qid;
+  par: number;
+}
+
+/**
+ * How many stars the star daily looks at, in the day's order. Each costs the Worker a file
+ * read when it checks a result (src/route-check.ts), and it can make 50: with a route as long
+ * as it checks (40 people), the day's start, its own files and the database, that leaves five.
+ */
+export const STAR_CANDIDATES = 5;
+
+/**
+ * The star daily: the day's start (dailyPick) heading for one of the other stars instead of
+ * JT. Everyone gets the same star, by rendezvous hashing like dailyPick, so a rebuild that adds
+ * or drops other stars leaves the day's alone. A star within one film of the start (or the
+ * start themself) is passed over, since that would be a one-move game. `distance` is the
+ * start's distance to a star, Infinity for none. Null when none of the first few will do.
+ *
+ * The game and the Worker both pick with this, so they always agree on the day's star.
+ */
+export async function starOfDay(stars: Qid[], day: string, start: Qid, distance: (star: Qid) => Promise<number>): Promise<DayStar | null> {
+  const ranked = stars
+    .filter((id) => id !== start)
+    .map((id) => ({ id, score: hash(`six-degrees-star:${day}:${id}`) }))
+    .sort((a, b) => b.score - a.score || a.id - b.id)
+    .slice(0, STAR_CANDIDATES);
+  for (const { id } of ranked) {
+    const par = await distance(id);
+    if (par >= 2 && par !== Infinity) return { id, par };
+  }
+  return null;
+}
+
+/** The goal as a route's `target`: left out for JT. */
+export const targetOf = (goal: Goal): Qid | undefined => (goal.id === JT ? undefined : goal.id);
+
 /** Distance and first step towards JT in the given mode. */
 export function reachIn(p: Person, mode: Mode): Reach {
   return mode === 'hard' ? p.hard : p.normal;
 }
 
-/** Follow parent pointers from `from` to JT. Uses only person shards: the film title is in the person's own credits. */
-export async function optimalPath(from: Person, load: Loader, mode: Mode = 'normal'): Promise<Step[]> {
+/** Distance and first step towards the goal: JT's are in the person's own row, another star's in their files. */
+export function reachTo(p: Person, goal: Goal, load: Loader): Promise<Reach> {
+  return goal.id === JT ? Promise.resolve(reachIn(p, goal.mode)) : load.reach(goal.id, p.id);
+}
+
+/** Follow parent pointers from `from` to the goal. Uses no film shards: the film title is in the person's own credits. */
+export async function optimalPath(from: Person, load: Loader, goal: Goal = jtGoal()): Promise<Step[]> {
   const steps: Step[] = [];
   let cur = from;
-  while (cur.id !== JT) {
-    const { parentFilm, parentPerson } = reachIn(cur, mode);
-    if (steps.length > 20 || !parentPerson) throw new Error(`Path from Q${from.id} doesn't reach JT`);
+  while (cur.id !== goal.id) {
+    const { parentFilm, parentPerson } = await reachTo(cur, goal, load);
+    if (steps.length > 20 || !parentPerson) throw new Error(`Path from Q${from.id} doesn't reach Q${goal.id}`);
     const film = cur.films.find((f) => f.id === parentFilm);
     if (!film) throw new Error(`Q${cur.id} has no credit for Q${parentFilm}`);
     cur = await load.person(parentPerson);
@@ -52,6 +119,8 @@ export interface ShareInput {
   daily: number | null;
   mode: Mode;
   start: string;
+  /** Who the game headed for; JT when left out. */
+  goal?: Goal;
   moves: MoveSummary[];
   par: number;
   gaveUp: boolean;
@@ -61,11 +130,12 @@ export interface ShareInput {
 }
 
 export function shareText(s: ShareInput): string {
-  const title = (s.daily === null ? 'Six Degrees of JT' : `Six Degrees of JT #${s.daily}`) + (s.mode === 'hard' ? ' (hard)' : '');
+  const other = s.goal && s.goal.id !== JT ? s.goal.name : null;
+  const title = `Six Degrees of ${other ?? 'JT'}` + (s.daily === null ? '' : ` #${s.daily}`) + (s.mode === 'hard' ? ' (hard)' : '');
   const result = s.gaveUp
     ? `gave up after ${plural(s.moves.length, 'film')} (par ${s.par})`
     : `${plural(s.moves.length, 'film')} (par ${s.par})`;
-  return [title, `${s.start} → Justin Timberlake`, `${emojiRow(s.moves)} ${result}`.trim(), s.standing, s.url].filter(Boolean).join('\n');
+  return [title, `${s.start} → ${other ?? JT_NAME}`, `${emojiRow(s.moves)} ${result}`.trim(), s.standing, s.url].filter(Boolean).join('\n');
 }
 
 export function plural(n: number, word: string): string {

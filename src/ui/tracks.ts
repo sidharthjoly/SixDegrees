@@ -1,4 +1,4 @@
-import { JT, type Grade } from '../logic';
+import { JT, JT_NAME, type Grade } from '../logic';
 import type { FilmRef, PersonRef } from '../types';
 import { h, yearOf } from './dom';
 
@@ -25,6 +25,8 @@ export function tracks(
     countdown?: boolean;
     /** Index of a step that just joined the list: it slides in and its grade jumps. */
     fresh?: number;
+    /** Who the game heads for, named in the pending slot; JT when left out. */
+    goal?: string;
   } = {},
 ): HTMLElement {
   const items: HTMLElement[] = [
@@ -66,7 +68,7 @@ export function tracks(
         'li',
         { class: 'track pending' },
         h('span', { class: 'track-num' }, '?'),
-        h('div', { class: 'track-body' }, h('span', { class: 'track-title' }, 'Your next film'), h('span', { class: 'track-sub' }, '…until one features ', h('b', null, 'Justin Timberlake'))),
+        h('div', { class: 'track-body' }, h('span', { class: 'track-title' }, 'Your next film'), h('span', { class: 'track-sub' }, '…until one features ', h('b', null, opts.goal ?? JT_NAME))),
       ),
     );
   }

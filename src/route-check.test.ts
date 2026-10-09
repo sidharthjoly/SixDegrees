@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { addDays } from './days';
-import { JT, dailyPick } from './logic';
-import { checkRoute, MAX_CHECKED_STEPS, parseRoute, RouteError, type Claim } from './route-check';
-import { A, B, BANNED, C, F1, F2, F3, F4, F5, NO_HARD, START, fixtureData, route } from './route-fixture';
+import { JT, dailyPick, starOfDay } from './logic';
+import { checkRoute, dayStar, MAX_CHECKED_STEPS, parseRoute, RouteError, type Claim } from './route-check';
+import { A, B, BANNED, C, F1, F2, F3, F4, F5, F6, FAR, NEAR, NO_HARD, START, TARGETS, fixtureData, route } from './route-fixture';
 
 const claim = (over: Partial<Claim>): Claim => ({ day: '2026-10-09', mode: 'normal', gaveUp: false, route: null, ...over });
 const refused = async (c: Claim, data = fixtureData()) => {
@@ -72,5 +72,40 @@ describe('checkRoute', () => {
     const unchecked = { par: 2, gaveUp: true, films: MAX_CHECKED_STEPS + 1, firstFilm: null, route: null };
     expect(await checkRoute(claim({ route: route(...steps) }), fixtureData())).toEqual(unchecked);
     expect(await checkRoute(claim({ gaveUp: true, route: route(...steps) }), fixtureData())).toEqual(unchecked);
+  });
+});
+
+describe('the star daily', () => {
+  const star = (over: Partial<Claim>) => claim({ mode: 'star', ...over });
+  const days = Array.from({ length: 60 }, (_, i) => addDays('2026-10-08', i));
+  /** The first day whose top-ranked star is `id`, were every star far enough away. */
+  const dayWithFirst = async (id: number) => {
+    for (const day of days) if ((await starOfDay([NEAR, FAR], day, START, async () => 5))?.id === id) return day;
+    throw new Error('no such day');
+  };
+
+  it('heads for the day’s star, passing over one within a film of the start', async () => {
+    for (const day of [await dayWithFirst(NEAR), await dayWithFirst(FAR)]) {
+      expect(await dayStar(day, fixtureData())).toEqual({ id: FAR, par: 2 });
+      const r = route([F3, B], [F6, FAR]);
+      expect(await checkRoute(star({ day, route: r }), fixtureData())).toEqual({ par: 2, gaveUp: false, films: 2, firstFilm: F3, route: r });
+    }
+  });
+
+  it('has JT as just another co-star on the way, through any film', async () => {
+    const r = route([F1, A], [F2, JT], [BANNED, B], [F6, FAR]);
+    expect(await checkRoute(star({ route: r }), fixtureData())).toMatchObject({ par: 2, films: 4 });
+  });
+
+  it('wants a finished route to end at the star, not JT, and a given-up one never to reach them', async () => {
+    expect(await refused(star({ route: route([F1, A], [F2, JT]) }))).toMatch(/end/);
+    expect(await refused(star({ route: route([F3, B], [F6, FAR], [F6, B]) }))).toMatch(/end/);
+    expect(await refused(star({ gaveUp: true, route: route([F3, B], [F6, FAR]) }))).toMatch(/end/);
+    expect(await checkRoute(star({ gaveUp: true, route: route([F3, B]) }), fixtureData())).toEqual({ par: 2, gaveUp: true, films: 1, firstFilm: F3, route: null });
+  });
+
+  it('doesn’t exist without other stars, or when every star is within a film of the start', async () => {
+    expect(await refused(star({ route: route([F3, B], [F6, FAR]) }), fixtureData([START], []))).toMatch(/no star daily/);
+    expect(await refused(star({ gaveUp: true }), fixtureData([START], TARGETS.filter((t) => t.id === NEAR)))).toMatch(/no star daily/);
   });
 });

@@ -13,7 +13,7 @@ import './styles/share.css';
 import './styles/squares.css';
 import './styles/challenge.css';
 import './styles/online.css';
-import { loadMeta } from './data';
+import { dailyStar, loadMeta } from './data';
 import { dailyPick, dayKey, isPlayableDay } from './logic';
 import { parseRoute } from './router';
 import { flushPending } from './online';
@@ -36,11 +36,17 @@ async function route(): Promise<void> {
         const today = dayKey(new Date());
         const day = r.day ?? today;
         if (!isPlayableDay(day, today)) return renderMessage('No daily that day', 'Dailies start on 8 October 2026, and each one opens on its day.');
+        if (r.mode === 'star') {
+          const star = await dailyStar(day);
+          if (!isCurrent(gen)) return;
+          if (!star) return renderMessage('No star daily that day', 'Every star was too close to that day’s start to make a game of it. The JT daily is still on.');
+          return await startGame({ qid: star.start, day, mode: 'star', vs: r.vs, target: star.star.id }, gen);
+        }
         const { daily } = await loadMeta();
         return await startGame({ qid: dailyPick(daily, day), day, mode: r.mode, vs: r.vs }, gen);
       }
       case 'play':
-        return await startGame({ qid: r.qid, day: null, mode: r.mode, vs: r.vs }, gen);
+        return await startGame({ qid: r.qid, day: null, mode: r.mode, vs: r.vs, target: r.target }, gen);
       case 'archive':
         return await renderArchive(gen);
       case 'stats':

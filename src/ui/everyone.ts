@@ -70,7 +70,7 @@ function body(input: EveryoneInput, s: DayStats, opener: string | null): Node[] 
     list.push(same === 0 ? { label: 'Your route', value: 'Only you', detail: 'Nobody else went your way', hot: true } : { label: 'Your route', value: pct(same + 1), detail: `${same} other ${same === 1 ? 'player' : 'players'} went your way` });
   }
 
-  const caption = `Today’s results for everyone who played daily #${dayNumber(input.day)}${input.mode === 'hard' ? ' in hard mode' : ''}, by films over par`;
+  const caption = `Today’s results for everyone who played daily #${dayNumber(input.day)}${input.mode === 'hard' ? ' in hard mode' : input.mode === 'star' ? ' as the star daily' : ''}, by films over par`;
   return [lead, tiles(list, true), scoreChart(chartStats(s, input.par), 'Everyone’s scores', caption, true), h('p', { class: 'muted everyone-note' }, 'From everyone’s first go at the daily on its day. Results are counted without names.')];
 }
 

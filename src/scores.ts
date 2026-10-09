@@ -22,7 +22,7 @@ export interface ModeStats {
 }
 
 export interface Streaks {
-  /** Run of on-time normal dailies ending today, or yesterday when today isn't played yet. */
+  /** Run of days with an on-time daily (see streakDays) ending today, or yesterday when today isn't played yet. */
   current: number;
   best: number;
 }
@@ -30,6 +30,7 @@ export interface Streaks {
 export interface Stats {
   normal: ModeStats;
   hard: ModeStats;
+  star: ModeStats;
   streak: Streaks;
 }
 
@@ -44,7 +45,7 @@ export function isUsable(r: DailyRecord, today: string): boolean {
   return (
     isDayKey(r.day) &&
     r.day <= today &&
-    (r.mode === 'normal' || r.mode === 'hard') &&
+    (r.mode === 'normal' || r.mode === 'hard' || r.mode === 'star') &&
     Number.isInteger(r.par) &&
     r.par >= 1 &&
     typeof r.gaveUp === 'boolean' &&
@@ -70,10 +71,13 @@ export function modeStats(records: DailyRecord[], mode: Mode): ModeStats {
   return { played, completed: played - distribution.gaveUp, parOrBetter: distribution.par, distribution };
 }
 
-/** Days that keep a streak alive: a normal daily finished on its own day without giving up. */
+/**
+ * Days that keep a streak alive: the daily finished on its own day without giving up, the JT
+ * one or the star daily (for anyone who'd rather not end up at JT). Hard mode is extra.
+ */
 export function streakDays(records: DailyRecord[]): Set<string> {
   // `late !== false` rather than `late`: a record missing the flag can't prove it was on time.
-  return new Set(records.filter((r) => r.mode === 'normal' && r.late === false && !r.gaveUp).map((r) => r.day));
+  return new Set(records.filter((r) => (r.mode === 'normal' || r.mode === 'star') && r.late === false && !r.gaveUp).map((r) => r.day));
 }
 
 export function streaks(days: Set<string>, today: string): Streaks {
@@ -97,7 +101,7 @@ export function streaks(days: Set<string>, today: string): Streaks {
 
 export function computeStats(all: DailyRecord[], today: string): Stats {
   const records = all.filter((r) => isUsable(r, today));
-  return { normal: modeStats(records, 'normal'), hard: modeStats(records, 'hard'), streak: streaks(streakDays(records), today) };
+  return { normal: modeStats(records, 'normal'), hard: modeStats(records, 'hard'), star: modeStats(records, 'star'), streak: streaks(streakDays(records), today) };
 }
 
 /** Whole-number percentage, or null when there's nothing to divide by. */

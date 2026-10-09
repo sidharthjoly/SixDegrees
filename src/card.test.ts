@@ -4,12 +4,14 @@ import { STORY_PATH_ROWS, drawPreviewCard, drawResultCard, drawStory, ellipsize,
 // Every character is 0.6em wide: close enough to Chakra Petch to exercise the fitting.
 const measure: Measure = (s, size) => [...s].length * size * 0.6;
 
-/** A context that records the text drawn, measuring with the same fake metrics. */
-function recorder(): Ctx & { texts: string[] } {
+/** A context that records the text drawn, and where, measuring with the same fake metrics. */
+function recorder(): Ctx & { texts: string[]; at: [string, number, number][] } {
   const texts: string[] = [];
+  const at: [string, number, number][] = [];
   const sizeOf = (font: string) => Number(/(\d+(?:\.\d+)?)px/.exec(font)?.[1] ?? 10);
   const ctx = {
     texts,
+    at,
     fillStyle: '' as unknown,
     strokeStyle: '' as unknown,
     lineWidth: 1,
@@ -32,8 +34,9 @@ function recorder(): Ctx & { texts: string[] } {
     fill() {},
     stroke() {},
     fillRect() {},
-    fillText(s: string) {
+    fillText(s: string, x: number, y: number) {
       texts.push(s);
+      at.push([s, x, y]);
     },
     strokeText() {},
     measureText(s: string) {
@@ -168,6 +171,24 @@ describe('drawResultCard', () => {
     expect(all).toContain('#1');
     expect(resultCardSize(withPath).height).toBeGreaterThan(1080);
   });
+
+  it('heads for JT unless told otherwise, in the same place as ever', () => {
+    const ctx = recorder();
+    drawResultCard(ctx, card);
+    expect(ctx.texts).toContain('SIX DEGREES OF JUSTIN TIMBERLAKE');
+    // Each outlined word is drawn twice: its shadow, then the word.
+    expect(ctx.at.filter(([s]) => s === 'JUSTIN').at(-1)).toEqual(['JUSTIN', 600, 360]);
+    expect(ctx.at.filter(([s]) => s === 'TIMBERLAKE').at(-1)).toEqual(['TIMBERLAKE', 600, 428]);
+  });
+
+  it('names another star in the band and beside the sticker, first name over the rest', () => {
+    const ctx = recorder();
+    drawResultCard(ctx, { ...card, goal: 'Robert De Niro' });
+    expect(ctx.texts).toContain('SIX DEGREES OF ROBERT DE NIRO');
+    expect(ctx.texts).toContain('ROBERT');
+    expect(ctx.texts).toContain('DE NIRO');
+    expect(ctx.texts.join('\n')).not.toContain('TIMBERLAKE');
+  });
 });
 
 describe('story card', () => {
@@ -198,6 +219,18 @@ describe('story card', () => {
     expect(all).toContain('BEAT 72% OF PLAYERS');
     expect(all).toContain('CAN YOU BEAT IT?');
     expect(all).not.toContain('Secret Film');
+  });
+
+  it('names the goal under the sticker: JT in his usual place, or another star', () => {
+    const jt = recorder();
+    drawStory(jt, card);
+    expect(jt.at.filter(([s]) => s === 'JUSTIN').at(-1)).toEqual(['JUSTIN', expect.any(Number), 1096]);
+    expect(jt.at.filter(([s]) => s === 'TIMBERLAKE').at(-1)).toEqual(['TIMBERLAKE', expect.any(Number), 1172]);
+    const star = recorder();
+    drawStory(star, { ...card, goal: 'Zendaya' });
+    expect(star.texts).toContain('SIX DEGREES OF ZENDAYA');
+    // One name, one line, centred where JT's two sit.
+    expect(star.at.filter(([s]) => s === 'ZENDAYA').at(-1)).toEqual(['ZENDAYA', expect.any(Number), 1134]);
   });
 
   it('dares the next player to finish when this one gave up', () => {

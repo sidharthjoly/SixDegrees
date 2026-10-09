@@ -52,13 +52,21 @@ describe('modeStats', () => {
     expect(modeStats(all, 'hard')).toEqual({ played: 2, completed: 1, parOrBetter: 1, distribution: { par: 1, plus1: 0, plus2: 0, plus3: 0, gaveUp: 1 } });
   });
 
+  it('keeps star dailies’ scores to themselves, while they keep the streak going', () => {
+    const all = [rec('2026-10-18'), rec('2026-10-19', { mode: 'star', target: 3454165, par: 2, moves: moves(2) }), rec('2026-10-20')];
+    const stats = computeStats(all, TODAY);
+    expect(stats.star).toEqual({ played: 1, completed: 1, parOrBetter: 1, distribution: { par: 1, plus1: 0, plus2: 0, plus3: 0, gaveUp: 0 } });
+    expect(stats.normal.played).toBe(2);
+    expect(stats.streak).toEqual({ current: 3, best: 3 });
+  });
+
   it('is all zeros with nothing played', () => {
     expect(modeStats([], 'normal')).toEqual({ played: 0, completed: 0, parOrBetter: 0, distribution: { par: 0, plus1: 0, plus2: 0, plus3: 0, gaveUp: 0 } });
   });
 });
 
 describe('streakDays', () => {
-  it('only counts normal dailies finished on their own day', () => {
+  it('only counts normal and star dailies finished on their own day', () => {
     const all = [
       rec('2026-10-10'),
       rec('2026-10-11', { late: true }),
@@ -66,8 +74,10 @@ describe('streakDays', () => {
       rec('2026-10-13', { mode: 'hard' }),
       rec('2026-10-14', { late: undefined as unknown as boolean }),
       rec('2026-10-15', { moves: moves(9) }),
+      rec('2026-10-16', { mode: 'star', target: 3454165 }),
+      rec('2026-10-17', { mode: 'star', target: 3454165, late: true }),
     ];
-    expect([...streakDays(all)].sort()).toEqual(['2026-10-10', '2026-10-15']);
+    expect([...streakDays(all)].sort()).toEqual(['2026-10-10', '2026-10-15', '2026-10-16']);
   });
 });
 

@@ -41,6 +41,10 @@ describe('challengeTitle', () => {
     expect(challengeTitle(code().slice(0, -1) + 'x', 'normal')).toBeNull();
     expect(challengeTitle(code({ mode: 'hard' }), 'normal')).toBeNull();
   });
+
+  it('ignores codes for free play towards another star', () => {
+    expect(challengeTitle(code({ target: 3454165 }), 'normal')).toBeNull();
+  });
 });
 
 describe('DAILY_PAGE_RE', () => {

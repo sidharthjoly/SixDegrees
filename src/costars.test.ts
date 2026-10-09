@@ -73,6 +73,12 @@ describe('CostarIndex', () => {
     expect(names(indexOf([tiny, socialNetwork]), 'ti')[0]).toBe('Justin Timberlake');
   });
 
+  it('puts the goal first instead when the game heads for another star', () => {
+    const hits = (q: string) => indexOf([tiny, socialNetwork]).search(q, Infinity, 15).hits.map((h) => h.person.name);
+    expect(hits('justin')).toEqual(['Justine Waddell', 'Justin Timberlake']);
+    expect(hits('ti')).toEqual(['Justine Waddell', 'Justin Timberlake']);
+  });
+
   it('goes through the best-known shared film and counts the others', () => {
     const [hit] = indexOf([tiny, unc, socialNetwork]).search('armie').hits;
     expect(hit.via.title).toBe('The Social Network');

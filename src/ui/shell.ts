@@ -1,6 +1,6 @@
-import { StaleDataError, loadMeta } from '../data';
+import { StaleDataError, getReach, loadMeta } from '../data';
 import { href } from '../router';
-import type { Mode } from '../types';
+import type { Mode, Qid } from '../types';
 import { h } from './dom';
 
 export const app = document.querySelector<HTMLElement>('#app')!;
@@ -34,9 +34,22 @@ export function go(hash: string): void {
   else location.hash = hash;
 }
 
-export async function randomStart(mode: Mode = 'normal'): Promise<void> {
+/**
+ * Free play from someone in the daily pool: famous, and at least two films from JT. Heading
+ * for another star, skip that star, and try a few times for someone who isn't one of their
+ * co-stars, which would be a one-move game.
+ */
+export async function randomStart(mode: Mode = 'normal', target?: Qid): Promise<void> {
   const { daily } = await loadMeta();
-  go(href({ name: 'play', qid: daily[Math.floor(Math.random() * daily.length)], mode, vs: null }));
+  const pool = daily.filter((id) => id !== target);
+  const pick = () => pool[Math.floor(Math.random() * pool.length)];
+  let qid = pick();
+  for (let tries = 1; target && tries < 5; tries++) {
+    const near = await getReach(target, qid).then((r) => r.dist < 2, () => false);
+    if (!near) break;
+    qid = pick();
+  }
+  go(href({ name: 'play', qid, mode, vs: null, target }));
 }
 
 const DEFAULT_TITLE = 'Six Degrees of Justin Timberlake';

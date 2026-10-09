@@ -78,17 +78,18 @@ export class CostarIndex {
 
   /**
    * Co-stars matching `query`, ranked like the name search (exact, prefix, word prefix,
-   * substring), better-known people first within a rank, and JT above everyone.
-   * `total` counts every match, so the caller can say how many were left out.
+   * substring), better-known people first within a rank, and the game's goal (JT unless
+   * given) above everyone. `total` counts every match, so the caller can say how many were
+   * left out.
    */
-  search(query: string, limit = Infinity): { hits: CostarHit[]; total: number } {
+  search(query: string, limit = Infinity, goal: Qid = JT): { hits: CostarHit[]; total: number } {
     const q = normalise(query);
     if (!q) return { hits: [], total: 0 };
     const qWords = q.split(' ');
     const matches: { e: Entry; rank: number }[] = [];
     for (const e of this.entries.values()) {
       const rank = nameRank(e.name, e.words, q, qWords);
-      if (rank >= 0) matches.push({ e, rank: e.person.id === JT ? -1 : rank });
+      if (rank >= 0) matches.push({ e, rank: e.person.id === goal ? -1 : rank });
     }
     matches.sort(
       (a, b) =>
