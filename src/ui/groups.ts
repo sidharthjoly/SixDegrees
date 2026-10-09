@@ -9,7 +9,9 @@ import {
   joinGroup,
   leaveGroup,
   myGroups,
+  newGroupCode,
   online,
+  removeMember,
   type GroupBoard,
   type GroupMember,
   type GroupResult,
@@ -174,6 +176,8 @@ function startForm(): HTMLElement {
 export async function renderGroup(code: string, gen: number): Promise<void> {
   if (!online) return renderMessage('Groups aren’t available', 'This copy of the game isn’t connected to a server, so there are no groups here.');
   if (!GROUP_CODE_RE.test(code)) return renderMessage('No such group', 'That group link isn’t right. Ask for the link again.');
+  const note = nextNote;
+  nextNote = '';
   const day = dayKey(new Date());
   let board: GroupBoard | null;
   try {
@@ -185,13 +189,21 @@ export async function renderGroup(code: string, gen: number): Promise<void> {
   if (!isCurrent(gen)) return;
   if (!board) {
     rememberGroups(cachedGroups().filter((g) => g.code !== code));
-    return renderMessage('No such group', 'Everyone has left that group, or the link isn’t right.');
+    return renderMessage('No such group', 'The group has a new link, everyone has left it, or the link isn’t right. Ask for the link again.');
   }
   document.title = `${board.name} · Six Degrees`;
-  drawGroup(board, day, 'normal');
+  onLeave(() => (shown = null));
+  drawGroup(board, day, 'normal', note);
 }
 
-function drawGroup(board: GroupBoard, day: string, mode: Mode): void {
+/** The group page as last drawn, while it's open: removals redraw from it (see ownerCard). */
+let shown: { board: GroupBoard; day: string; mode: Mode } | null = null;
+/** A message for the group's starter on the next group page drawn, after a new code. */
+let nextNote = '';
+
+/** `note` is a message for the group's starter, after they've changed something. */
+function drawGroup(board: GroupBoard, day: string, mode: Mode, note = ''): void {
+  shown = { board, day, mode };
   const me = board.members.find((m) => m.me);
   if (me) rememberGroups([...cachedGroups().filter((g) => g.code !== board.code), { code: board.code, name: board.name, members: board.members.length }]);
   const redraw = (nextMode: Mode) => drawGroup(board, day, nextMode);
@@ -208,6 +220,7 @@ function drawGroup(board: GroupBoard, day: string, mode: Mode): void {
     todayCard(board, day, mode, redraw),
     weekCard(board),
     me ? memberCard(board, me, day) : '',
+    me && runsGroup(board) ? ownerCard(board, note) : '',
   );
 }
 
@@ -252,7 +265,14 @@ function joinCard(board: GroupBoard, day: string): HTMLElement {
       submit.disabled = false;
     }
   });
-  return h('section', { class: 'card group-join' }, h('h2', null, `Join ${board.name}`), h('p', null, 'Your daily results show on this board from now on. Nothing else about you is shared.'), form);
+  return h(
+    'section',
+    { class: 'card group-join' },
+    h('h2', null, `Join ${board.name}`),
+    h('p', null, 'Your daily results show on this board from now on. Nothing else about you is shared.'),
+    h('p', { class: 'muted' }, 'Anyone who hasn’t played a daily within two weeks of joining, or for three months, drops off the board. The invite link brings them back.'),
+    form,
+  );
 }
 
 /** Members ranked by a mode's result for the day, ties keeping the join order. */
@@ -330,7 +350,8 @@ function memberCard(board: GroupBoard, me: GroupMember, day: string): HTMLElemen
   });
   const leave = h('button', { class: 'link-btn', type: 'button' }, 'Leave this group');
   leave.addEventListener('click', async () => {
-    if (!confirm(`Leave ${board.name}? You can rejoin with the invite link.`)) return;
+    const handover = runsGroup(board) ? ' Whoever has been in longest takes over running it.' : '';
+    if (!confirm(`Leave ${board.name}? You can rejoin with the invite link.${handover}`)) return;
     try {
       await leaveGroup(board.code);
       rememberGroups(cachedGroups().filter((g) => g.code !== board.code));
@@ -342,13 +363,72 @@ function memberCard(board: GroupBoard, me: GroupMember, day: string): HTMLElemen
   return h('section', { class: 'card group-you' }, h('h2', null, 'You'), form, leave);
 }
 
+/** Whether this player started the group, and the server is new enough to let them run it. */
+const runsGroup = (board: GroupBoard) => board.owner === true && board.members.every((m) => typeof m.id === 'number');
+
+/**
+ * For whoever started the group: take people off the board, one tap each, since a link that
+ * got out can bring in dozens. Anyone removed can rejoin with the link until it's replaced.
+ */
+function ownerCard(board: GroupBoard, note: string): HTMLElement {
+  const status = h('p', { class: 'form-status', role: 'status' }, note);
+  const others = board.members.filter((m) => !m.me);
+  const rows = others.map((m, i) => {
+    const remove = h('button', { class: 'link-btn owner-remove', type: 'button', 'aria-label': `Remove ${m.name}` }, 'Remove');
+    remove.addEventListener('click', async () => {
+      remove.disabled = true;
+      try {
+        await removeMember(board.code, m.id!);
+        // From the page as it is now, not as this card was built: quick taps overlap, and each
+        // earlier removal has redrawn it since.
+        const now = shown;
+        if (!now || now.board.code !== board.code) return;
+        drawGroup({ ...now.board, members: now.board.members.filter((x) => x.id !== m.id) }, now.day, now.mode, `Removed ${m.name}.`);
+        // Stay at the same place in the list, so clearing out several is tap after tap.
+        const left = app.querySelectorAll<HTMLButtonElement>('.owner-remove');
+        (left[Math.min(i, left.length - 1)] ?? app.querySelector<HTMLElement>('.owner-new-code'))?.focus({ preventScroll: true });
+      } catch (err) {
+        status.textContent = errorText(err, `Couldn’t remove ${m.name}. Try again.`);
+        remove.disabled = false;
+      }
+    });
+    return h('li', { class: 'owner-row' }, h('span', { class: 'board-name' }, m.name), remove);
+  });
+
+  const replace = h('button', { class: 'btn owner-new-code', type: 'button' }, 'New invite link');
+  replace.addEventListener('click', async () => {
+    if (!confirm(`Make a new invite link for ${board.name}? The old one stops working. Everyone already in stays in.`)) return;
+    replace.disabled = true;
+    try {
+      const code = await newGroupCode(board.code);
+      rememberGroups([...cachedGroups().filter((g) => g.code !== board.code), { code, name: board.name, members: board.members.length }]);
+      nextNote = 'New link made. Send it to anyone who hasn’t joined yet with Invite friends: the old one no longer works.';
+      // Replaced rather than pushed: going back to the old code would only find nothing.
+      location.replace(groupHref(code));
+    } catch (err) {
+      status.textContent = errorText(err, 'Couldn’t make a new link. Try again.');
+      replace.disabled = false;
+    }
+  });
+
+  return h(
+    'section',
+    { class: 'card group-owner' },
+    h('h2', null, 'Run the group'),
+    h('p', { class: 'muted' }, 'You started this group, so you can take people off the board. They can rejoin with the invite link until you make a new one; everyone already in stays in.'),
+    others.length ? h('ul', { class: 'owner-list' }, ...rows) : null,
+    h('div', { class: 'row' }, replace),
+    status,
+  );
+}
+
 // ------------------------------------------------------------------ result screen
 
 /**
  * On a daily's result screen: each of the player's groups (up to three), with the day's
  * board so far. `uploaded` settles once the player's own result is in.
  */
-export function groupsPanel(day: string, mode: Mode, uploaded: Promise<void>): HTMLElement | null {
+export function groupsPanel(day: string, mode: Mode, uploaded: Promise<unknown>): HTMLElement | null {
   if (!online) return null;
   const panel = h('section', { class: 'card groups-panel', hidden: true });
   void (async () => {

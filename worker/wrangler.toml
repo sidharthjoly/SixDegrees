@@ -1,8 +1,20 @@
-# Personalised previews for challenge links. Deploy with: npx wrangler@4.136.3 deploy --config worker/wrangler.toml
+# Personalised previews for challenge links, and the gate for the game's database writes
+# (src/gate.ts). Deploy with: npx wrangler@4.136.3 deploy --config worker/wrangler.toml
+#
+# The gate needs three secrets, set once each with
+#   npx wrangler@4.136.3 secret put <NAME> --config worker/wrangler.toml
+#   SUPABASE_URL         the Supabase project's URL
+#   SUPABASE_SECRET_KEY  a secret key from the project's API keys (sb_secret_…); never in the site
+#   SOURCE_SECRET        any long random string, e.g. from `openssl rand -base64 32`
 name = "sixdegrees-previews"
 main = "index.ts"
 compatibility_date = "2026-09-01"
+# No workers.dev address: these routes are the only way in.
 workers_dev = false
 
-# Only the daily preview pages go through the Worker; everything else is served as before.
-routes = [{ pattern = "sixdegrees.sidharthjoly.com/d/*", zone_name = "sidharthjoly.com" }]
+# Only the daily preview pages and the gate go through the Worker; everything else is served
+# as before.
+routes = [
+  { pattern = "sixdegrees.sidharthjoly.com/d/*", zone_name = "sidharthjoly.com" },
+  { pattern = "sixdegrees.sidharthjoly.com/api/*", zone_name = "sidharthjoly.com" },
+]

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GROUP_CODE_RE, MIN_PLAYERS_FOR_STANDING, compareResults, everyoneLead, online, routeCode, standingText, uploadArgs, type DayStats } from './online';
+import { GROUP_CODE_RE, MIN_PLAYERS_FOR_STANDING, OnlineError, compareResults, everyoneLead, online, retryLater, routeCode, standingText, uploadArgs, type DayStats } from './online';
 
 describe('online', () => {
   it('is off without the Supabase settings, as in tests and CI', () => {
@@ -39,9 +39,10 @@ describe('uploadArgs', () => {
     });
   });
 
-  it('leaves the route out when the player gave up, and the opener when they never moved', () => {
-    expect(uploadArgs({ ...base, gaveUp: true }, 'id').p_route).toBeNull();
+  it('sends the route of a given-up game too, for the gate to check, and nothing when there was no move', () => {
+    expect(uploadArgs({ ...base, gaveUp: true }, 'id').p_route).toBe('2s-xig_10-1z');
     const none = uploadArgs({ ...base, moves: [], path: [], gaveUp: true }, 'id');
+    expect(none.p_route).toBeNull();
     expect(none.p_first_film).toBeNull();
     expect(none.p_films).toBe(0);
   });
@@ -49,6 +50,20 @@ describe('uploadArgs', () => {
   it('writes routes in the same base36 shape as challenge links, which the server checks', () => {
     expect(routeCode([[35, 36]])).toBe('z-10');
     expect(routeCode([[1, 2], [3, 4]])).toMatch(/^[0-9a-z]+-[0-9a-z]+(_[0-9a-z]+-[0-9a-z]+)*$/);
+  });
+});
+
+describe('retryLater', () => {
+  it('keeps results the server couldn’t take yet: unreachable, at its daily cap, or full', () => {
+    expect(retryLater(new OnlineError('Couldn’t reach the server'))).toBe(true);
+    expect(retryLater(new OnlineError('Too many results today. Try again tomorrow.', '54000'))).toBe(true);
+    expect(retryLater(new OnlineError('The game’s server is full', '53100'))).toBe(true);
+  });
+
+  it('drops results it refused for good', () => {
+    expect(retryLater(new OnlineError('No daily on 2026-01-01', '22023'))).toBe(false);
+    expect(retryLater(new OnlineError('new row violates check constraint', '23514'))).toBe(false);
+    expect(retryLater(new Error('anything else'))).toBe(false);
   });
 });
 

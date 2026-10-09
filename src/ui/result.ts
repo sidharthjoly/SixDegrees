@@ -1,6 +1,6 @@
 import { loader } from '../data';
 import { dayKey, dayNumber, emojiRow, optimalPath, plural, shareText, type MoveSummary, type Step } from '../logic';
-import { submitResult, standingText } from '../online';
+import { submitResult, standingText, type Verdict } from '../online';
 import { saveDaily } from '../storage';
 import type { Mode, Person } from '../types';
 import { challengePanel } from './challenge';
@@ -43,7 +43,7 @@ export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): P
   const late = !!g.day && g.day !== dayKey(new Date());
   const path = g.moves.map((m): [number, number] => [m.film.id, m.person.id]);
   // Dailies also go to the server (when there is one) for the day's stats and groups.
-  let uploaded: Promise<void> = Promise.resolve();
+  let uploaded: Promise<Verdict | undefined> = Promise.resolve(undefined);
   if (g.day) {
     saveDaily({ v: 2, day: g.day, mode: g.mode, start: g.start.id, par, moves, path, gaveUp, late, at: new Date().toISOString() });
     uploaded = submitResult({ day: g.day, mode: g.mode, par, moves, path, gaveUp, late }).catch(() => undefined);
@@ -89,7 +89,7 @@ export async function finish(g: Game, gaveUp: boolean, revealed: Step[] = []): P
 
   const yours: ChainStep[] = [...g.moves, ...revealed.map((s) => ({ ...s, revealed: true }))];
   const panel = challengePanel(ctx);
-  const everyone = g.day ? everyonePanel({ day: g.day, mode: g.mode, par, films: n, gaveUp, late }, uploaded, (stats) => (standing = late ? null : standingText(stats, gaveUp))) : null;
+  const everyone = g.day ? everyonePanel({ day: g.day, mode: g.mode, par, films: n, gaveUp, late }, uploaded, (stats, wasLate) => (standing = wasLate ? null : standingText(stats, gaveUp))) : null;
   const groups = g.day ? groupsPanel(g.day, g.mode, uploaded) : null;
   // A friend's challenge shows your countdown beside theirs, so don't repeat it below.
   const compared = !!panel?.querySelector('.vs-cols');

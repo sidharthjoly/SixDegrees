@@ -1,7 +1,13 @@
 import { DAILY_PAGE_RE, challengeTitle } from '../src/challenge-preview';
+import { handleWrite, type GateEnv } from '../src/gate';
 
 /*
- * A Cloudflare Worker in front of the daily preview pages (sixdegrees.sidharthjoly.com/d/*).
+ * A Cloudflare Worker with two jobs on sixdegrees.sidharthjoly.com.
+ *
+ * /api/*: the gate for the game's database writes (src/gate.ts). Those requests are handled
+ * here and never passed on to the site, which has nothing there.
+ *
+ * /d/*: the daily preview pages.
  * A "beat my score" link is a daily's page plus ?vs=<code>, and GitHub Pages serves the same
  * page whatever the query, so every challenge unfurled as the plain daily. For a valid code
  * this rewrites the page's title tags with the sender's score ("Sid got to JT in 3 films.
@@ -11,8 +17,22 @@ import { DAILY_PAGE_RE, challengeTitle } from '../src/challenge-preview';
  * is the old, generic preview. Rewriting streams the page, well inside the free plan's CPU time.
  */
 
+/**
+ * The gate's own requests: to Supabase, and to the site's data for checking routes. Data
+ * versions are content-hashed, so Cloudflare can keep those files for a day; it doesn't cache
+ * JSON unless told to.
+ */
+function upstream(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  if (String(input).includes('/data/v/')) return fetch(input, { ...init, cf: { cacheEverything: true, cacheTtl: 86_400 } } as RequestInit);
+  return fetch(input, init);
+}
+
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: GateEnv): Promise<Response> {
+    if (new URL(request.url).pathname.startsWith('/api/')) {
+      const { cf } = request as Request & { cf?: { country?: string } };
+      return handleWrite(request, env, upstream, cf?.country);
+    }
     const response = await fetch(request);
     try {
       const url = new URL(request.url);

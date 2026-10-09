@@ -1,10 +1,12 @@
+import { WRITES } from './gate';
 import type { MoveSummary } from './logic';
 import type { Mode, Qid } from './types';
 
 /*
  * The only part of the game with a server: anonymous daily results for the day's global
  * stats ("Beat 72% of players"), and group leaderboards. It talks to the sixdegrees_*
- * functions in supabase/schema.sql through Supabase's REST API.
+ * functions in supabase/schema.sql through Supabase's REST API, except for the ones that add
+ * rows, which go through the Worker's gate on the site's own address (src/gate.ts).
  *
  * Without VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY at build time (local dev, CI,
  * forks) `online` is false and the game works as before, with those features hidden. Every
@@ -13,6 +15,8 @@ import type { Mode, Qid } from './types';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL?.replace(/\/+$/, '') ?? '';
 const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? '';
+/** Relative to the site root, like the data files, so it works on any page. */
+const API = (import.meta.env.VITE_API_URL ?? `${import.meta.env.BASE_URL}api/`).replace(/\/*$/, '/');
 
 export const online = !!(BASE && KEY);
 
@@ -38,12 +42,14 @@ function timeoutSignal(ms: number): AbortSignal {
 
 async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
   if (!online) throw new OnlineError('Not connected');
-  const headers: Record<string, string> = { apikey: KEY, 'Content-Type': 'application/json' };
+  const write = WRITES.has(fn);
+  // The gate adds its own key; the public one is only for Supabase itself.
+  const headers: Record<string, string> = write ? { 'Content-Type': 'application/json' } : { apikey: KEY, 'Content-Type': 'application/json' };
   // Legacy anon keys are JWTs and go in Authorization too; publishable keys must not.
-  if (KEY.startsWith('eyJ')) headers.Authorization = `Bearer ${KEY}`;
+  if (!write && KEY.startsWith('eyJ')) headers.Authorization = `Bearer ${KEY}`;
   let res: Response;
   try {
-    res = await fetch(`${BASE}/rest/v1/rpc/${fn}`, { method: 'POST', headers, body: JSON.stringify(args), signal: timeoutSignal(TIMEOUT_MS) });
+    res = await fetch(write ? `${API}rpc/${fn}` : `${BASE}/rest/v1/rpc/${fn}`, { method: 'POST', headers, body: JSON.stringify(args), signal: timeoutSignal(TIMEOUT_MS) });
   } catch {
     throw new OnlineError('Couldn’t reach the server');
   }
@@ -115,12 +121,30 @@ export function uploadArgs(r: ResultUpload, client: string): Record<string, unkn
     p_gave_up: r.gaveUp,
     p_late: r.late,
     p_first_film: r.path[0]?.[0] ?? null,
-    p_route: r.gaveUp || r.path.length === 0 ? null : routeCode(r.path),
+    // Given-up games too: the gate checks the route (src/route-check.ts), and the database
+    // only keeps finished ones.
+    p_route: r.path.length === 0 ? null : routeCode(r.path),
   };
 }
 
+/**
+ * The device's offset from UTC in minutes, sent with every write that places the player's day.
+ * The server decides whether a daily arrived on its day (sixdegrees.player_day in
+ * supabase/schema.sql), so it's taken when sending, not when playing.
+ */
+export const utcOffset = () => -new Date().getTimezoneOffset();
+
 const PENDING_KEY = 'sixdeg:pending';
 const MAX_PENDING = 20;
+
+/**
+ * Whether a result the server didn't take is worth sending again later: it couldn't be
+ * reached, or it was at its daily cap (54000) or storage budget (53100), which anyone can run
+ * up with made-up ids. Those caps reset at UTC midnight, so a later try the same day can still
+ * be on time; one that arrives after the player's own midnight counts as late. Anything else
+ * it refused (bad or out-of-date input) won't go in later either.
+ */
+export const retryLater = (err: unknown) => err instanceof OnlineError && (err.code === null || err.code === '54000' || err.code === '53100');
 
 function loadPending(): Record<string, unknown>[] {
   try {
@@ -140,24 +164,33 @@ function savePending(list: Record<string, unknown>[]): void {
   }
 }
 
+/** The server's word on a result: whether it counted as late (played after its day). */
+export interface Verdict {
+  late: boolean;
+}
+
 /**
- * Sends a finished daily. If the server can't be reached it's kept and sent with the next
- * one (or on the next visit), so a result played offline still counts for groups. The
- * server keeps only a player's first result per day and mode, so resending is harmless.
+ * Sends a finished daily, and answers with the server's verdict on it (undefined if it
+ * didn't go in). If the server can't be reached it's kept and sent with the next one (or on
+ * the next visit); it still counts if that's before the player's midnight. The server keeps
+ * only a player's first result per day and mode, so resending is harmless.
  */
-export async function submitResult(r: ResultUpload): Promise<void> {
-  if (!online) return;
-  const queue = [...loadPending(), uploadArgs(r, clientId())];
+export async function submitResult(r: ResultUpload): Promise<Verdict | undefined> {
+  if (!online) return undefined;
+  const mine = uploadArgs(r, clientId());
+  const queue = [...loadPending(), mine];
   const failed: Record<string, unknown>[] = [];
+  let verdict: Verdict | undefined;
   for (const args of queue) {
     try {
-      await rpc('sixdegrees_submit', args);
+      const answer = await rpc<Verdict | null>('sixdegrees_submit', { ...args, p_offset: utcOffset() });
+      if (args === mine && answer) verdict = answer;
     } catch (err) {
-      // A refusal (bad or out-of-date input) won't succeed later either; only retry outages.
-      if (err instanceof OnlineError && err.code === null) failed.push(args);
+      if (retryLater(err)) failed.push(args);
     }
   }
   savePending(failed);
+  return verdict;
 }
 
 /** Sends anything left over from an earlier visit. */
@@ -169,9 +202,9 @@ export function flushPending(): void {
     const failed: Record<string, unknown>[] = [];
     for (const args of queue) {
       try {
-        await rpc('sixdegrees_submit', args);
+        await rpc('sixdegrees_submit', { ...args, p_offset: utcOffset() });
       } catch (err) {
-        if (err instanceof OnlineError && err.code === null) failed.push(args);
+        if (retryLater(err)) failed.push(args);
       }
     }
     if (failed.length) savePending([...failed, ...loadPending()]);
@@ -189,6 +222,13 @@ export interface DayStats {
   /** Where this player stands, if they played that day. */
   me: { beat: number; sameOpener: number; sameRoute: number } | null;
 }
+
+/**
+ * A hint in a daily: the next film and person on a shortest route from `person`. It comes
+ * from the server, which records the asking first, so the result counts it (src/gate.ts).
+ */
+export const dailyHint = (day: string, person: Qid) =>
+  rpc<{ film: Qid; person: Qid }>('sixdegrees_hint', { p_client: clientId(), p_day: day, p_mode: 'normal', p_person: person });
 
 export const dayStats = (day: string, mode: Mode) => rpc<DayStats>('sixdegrees_day', { p_day: day, p_mode: mode, p_client: clientId() });
 
@@ -226,6 +266,8 @@ export interface GroupResult {
 }
 
 export interface GroupMember {
+  /** Only for the group's starter to remove them by. Missing before the server had it. */
+  id?: number;
   name: string;
   me: boolean;
   normal: GroupResult | null;
@@ -237,6 +279,8 @@ export interface GroupBoard {
   code: string;
   name: string;
   member: boolean;
+  /** This player started the group, so can remove members and replace its code. */
+  owner?: boolean;
   members: GroupMember[];
 }
 
@@ -250,12 +294,18 @@ export interface GroupSummary {
 export const GROUP_CODE_RE = /^[a-hj-km-np-z2-9]{10}$/;
 
 export const createGroup = (groupName: string, playerName: string) =>
-  rpc<string>('sixdegrees_create_group', { p_client: clientId(), p_group_name: groupName, p_player_name: playerName });
+  rpc<string>('sixdegrees_create_group', { p_client: clientId(), p_group_name: groupName, p_player_name: playerName, p_offset: utcOffset() });
 
 export const joinGroup = (code: string, playerName: string) =>
-  rpc<{ code: string; name: string }>('sixdegrees_join_group', { p_code: code, p_client: clientId(), p_player_name: playerName });
+  rpc<{ code: string; name: string }>('sixdegrees_join_group', { p_code: code, p_client: clientId(), p_player_name: playerName, p_offset: utcOffset() });
 
 export const leaveGroup = (code: string) => rpc<null>('sixdegrees_leave_group', { p_code: code, p_client: clientId() });
+
+/** For the group's starter: takes a member off the board. They can rejoin until the code changes. */
+export const removeMember = (code: string, id: number) => rpc<null>('sixdegrees_remove_member', { p_code: code, p_client: clientId(), p_member: id });
+
+/** For the group's starter: swaps the code for a new one, so the old invite link stops working. */
+export const newGroupCode = (code: string) => rpc<string>('sixdegrees_new_code', { p_code: code, p_client: clientId() });
 
 /** A group's board for `day`, or null if there's no such group. */
 export const groupBoard = (code: string, day: string) => rpc<GroupBoard | null>('sixdegrees_group', { p_code: code, p_client: clientId(), p_day: day });

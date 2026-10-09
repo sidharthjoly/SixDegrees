@@ -1,6 +1,6 @@
 import { getFilm } from '../data';
 import { dayNumber, plural } from '../logic';
-import { dayStats, everyoneLead, online, type DayStats } from '../online';
+import { dayStats, everyoneLead, online, type DayStats, type Verdict } from '../online';
 import { percent, type ModeStats } from '../scores';
 import type { Mode } from '../types';
 import { h } from './dom';
@@ -23,16 +23,23 @@ export interface EveryoneInput {
   late: boolean;
 }
 
-/** `uploaded` settles once the player's own result has been sent, so it's in the counts. */
-export function everyonePanel(input: EveryoneInput, uploaded: Promise<void>, onStats: (s: DayStats) => void): HTMLElement | null {
+/**
+ * `uploaded` settles once the player's own result has been sent, so it's in the counts, with
+ * the server's verdict on it: the server decides whether it was late, so its word wins.
+ */
+export function everyonePanel(given: EveryoneInput, uploaded: Promise<Verdict | undefined>, onStats: (s: DayStats, late: boolean) => void): HTMLElement | null {
   if (!online) return null;
+  const heading = (late: boolean) => (late ? `Everyone on daily #${dayNumber(given.day)}` : 'Everyone today');
+  const title = h('h2', null, heading(given.late));
   const status = h('p', { class: 'muted everyone-status', role: 'status' }, 'Counting today’s players…');
-  const panel = h('section', { class: 'card everyone', 'aria-busy': 'true' }, h('h2', null, input.late ? `Everyone on daily #${dayNumber(input.day)}` : 'Everyone today'), status);
+  const panel = h('section', { class: 'card everyone', 'aria-busy': 'true' }, title, status);
   void (async () => {
     try {
-      await uploaded;
+      const verdict = await uploaded;
+      const input = verdict ? { ...given, late: verdict.late } : given;
+      title.textContent = heading(input.late);
       const stats = await dayStats(input.day, input.mode);
-      onStats(stats);
+      onStats(stats, input.late);
       if (stats.players === 0) {
         panel.remove();
         return;

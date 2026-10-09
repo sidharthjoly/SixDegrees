@@ -275,6 +275,33 @@
   margin-top: 14px;
 }
 
+.owner-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.owner-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 2px dashed var(--divider);
+}
+
+.owner-row:last-child {
+  border-bottom: 0;
+}
+
+.owner-row .link-btn {
+  flex: none;
+  margin: 0;
+}
+
+.group-owner .row {
+  margin-top: 14px;
+}
+
 /* ------------------------------------------------------------ result screen */
 
 .group-panel-name {

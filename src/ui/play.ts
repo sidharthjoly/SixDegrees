@@ -3,6 +3,7 @@ import { StaleDataError, getFilm, getPerson, loadMeta, loader } from '../data';
 import { keyCommand, keysWhileMounted } from '../keys';
 import { foldList } from '../lists';
 import { JT, dayNumber, filterByText, fold, grade, optimalPath, plural, reachIn, type Grade } from '../logic';
+import { OnlineError, dailyHint, online } from '../online';
 import type { Film, FilmRef, Mode, Person, PersonRef, Qid } from '../types';
 import { challengeBanner } from './challenge';
 import { feel } from './haptics';
@@ -33,8 +34,8 @@ export interface Game {
   /** Film whose cast list is open, or null when choosing a film. */
   film: Film | null;
   filter: string;
-  /** Hint shown for the move in progress. Always false in hard mode. */
-  hint: boolean;
+  /** The step shown as a hint for the move in progress: the next of a shortest route. Always null in hard mode. */
+  hint: { film: Qid; person: Qid } | null;
   busy: boolean;
 }
 
@@ -49,6 +50,8 @@ const view = {
   expanded: '',
   /** Pulse the hinted option once, on the first draw after asking for a hint. */
   pulseHint: false,
+  /** Why the last hint asked for couldn't be had, until the next move. */
+  hintTrouble: '',
   /** Stops the play screen's key listener. */
   stopKeys: () => {},
   /** The co-star search the panel on screen is feeding from. */
@@ -93,7 +96,7 @@ export async function startGame(opts: StartOptions, gen: number): Promise<void> 
     moves: [],
     film: null,
     filter: '',
-    hint: false,
+    hint: null,
     busy: false,
   };
   document.title = `${start.name} → Justin Timberlake · Six Degrees`;
@@ -148,9 +151,10 @@ function renderPlay(scroll = false): void {
           'div',
           { class: 'actions' },
           h('button', { class: 'btn', type: 'button', disabled: g.busy || (g.moves.length === 0 && !g.film), onclick: undo }, '↶ Undo'),
-          g.mode === 'normal' && h('button', { class: 'btn', type: 'button', disabled: g.busy || g.hint, onclick: showHint }, '💡 Hint'),
+          g.mode === 'normal' && h('button', { class: 'btn', type: 'button', disabled: g.busy || g.hint !== null, onclick: showHint }, '💡 Hint'),
           h('button', { class: 'btn', type: 'button', disabled: g.busy, onclick: () => void giveUp() }, 'Show me the way'),
         ),
+        view.hintTrouble ? h('p', { class: 'note', role: 'status' }, view.hintTrouble) : null,
       ),
     ),
   );
@@ -229,9 +233,8 @@ interface Panel {
 }
 
 function playPanel(g: Game, cur: Person): Panel {
-  const reach = reachIn(cur, g.mode);
-  const hintFilm = g.hint ? reach.parentFilm : 0;
-  const hintPerson = g.hint ? reach.parentPerson : 0;
+  const hintFilm = g.hint?.film ?? 0;
+  const hintPerson = g.hint?.person ?? 0;
   // The pulse plays on the first fill only; later refills (typing) rebuild the options.
   let pulse = view.pulseHint;
   view.pulseHint = false;
@@ -499,10 +502,11 @@ export function choosePerson(ref: PersonRef, via?: FilmRef): Promise<void> {
     const from = current(g);
     const person = await getPerson(ref.id);
     const graded = grade(distOf(g, from), distOf(g, person));
-    g.moves.push({ film, person, grade: graded, hinted: g.hint });
+    g.moves.push({ film, person, grade: graded, hinted: g.hint !== null });
     g.film = null;
     g.filter = '';
-    g.hint = false;
+    g.hint = null;
+    view.hintTrouble = '';
     feel(person.id === JT ? 'win' : graded);
     if (person.id === JT) {
       g.busy = false;
@@ -518,15 +522,46 @@ export function undo(): void {
   if (g.film) g.film = null;
   else g.moves.pop();
   g.filter = '';
-  g.hint = false;
+  g.hint = null;
+  view.hintTrouble = '';
   renderPlay();
 }
 
+/**
+ * Shows the next step of a shortest route. A daily's comes from the server, which records the
+ * asking so the result counts it however the game reports it (src/gate.ts); free play, and
+ * copies of the game without a server, work it out here.
+ */
 export function showHint(): void {
-  if (!game || game.busy || game.mode === 'hard' || game.hint) return;
-  game.hint = true;
-  view.pulseHint = !reducedMotion();
+  const g = game;
+  if (!g || g.busy || g.mode === 'hard' || g.hint) return;
+  const here = current(g);
+  const show = (step: { film: Qid; person: Qid }) => {
+    g.hint = step;
+    view.pulseHint = !reducedMotion();
+  };
+  view.hintTrouble = '';
+  if (!g.day || !online) {
+    const { parentFilm, parentPerson } = reachIn(here, g.mode);
+    show({ film: parentFilm, person: parentPerson });
+    return renderPlay();
+  }
+  const gen = currentGeneration();
+  g.busy = true;
   renderPlay();
+  dailyHint(g.day, here.id)
+    .then(
+      (step) => {
+        if (current(g) === here) show(step);
+      },
+      (err: unknown) => {
+        view.hintTrouble = err instanceof OnlineError && err.code !== null ? err.message : 'Hints need a connection. Try again in a moment.';
+      },
+    )
+    .finally(() => {
+      g.busy = false;
+      if (isCurrent(gen) && game === g) renderPlay();
+    });
 }
 
 export function giveUp(): Promise<void> {

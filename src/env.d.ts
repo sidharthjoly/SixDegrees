@@ -6,4 +6,6 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL?: string;
   /** Its publishable (or legacy anon) key. Public by design: it ships in the bundle. */
   readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string;
+  /** Where the Worker's write gate is (src/gate.ts). Defaults to api/ on the site itself. */
+  readonly VITE_API_URL?: string;
 }

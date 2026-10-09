@@ -1,5 +1,5 @@
 {
-  // Type-checks the Cloudflare Worker and the game code it shares (src/challenge-preview.ts).
+  // Type-checks the Cloudflare Worker, its test, and the game code they share (src/challenge-preview.ts, src/gate.ts).
   "compilerOptions": {
     "target": "es2022",
     "lib": ["es2023", "webworker"],
@@ -15,5 +15,5 @@
     "noUnusedParameters": true,
     "skipLibCheck": true
   },
-  "include": ["index.ts", "env.d.ts"]
+  "include": ["index.ts", "index.test.ts", "env.d.ts"]
 }
