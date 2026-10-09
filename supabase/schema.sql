@@ -114,8 +114,8 @@ alter table sixdegrees.members add constraint members_code_fkey
 create or replace function sixdegrees.name_key(name text) returns text
 language sql immutable set search_path = '' as $$
   select lower(replace(replace(translate(
-    regexp_replace(normalize(name, NFKD), E'[̀-ͯ᪰-᫿᷀-᷿⃐-⃿︠-︯·’'' .-]', '', 'g'),
-    E'IıȷɑɩɡøØđĐłŁħĦ01АВЕЅІЈКМНОРСТУХҮԚԜӀаеорсухѕіјԁԛԝһӏүѵΑΒΕΖΗΙΚΜΝΟΡΤΥΧαικνορυςϳօսհոᴀʙᴄᴅᴇɢʜɪᴊᴋʟᴍɴᴏᴘʀꜱᴛᴜᴠᴡʏᴢ',
+    regexp_replace(normalize(name, NFKD), E'[\u0300-\u036F\u1AB0-\u1AFF\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F\u00B7\u2019'' .-]', '', 'g'),
+    E'I\u0131\u0237\u0251\u0269\u0261\u00F8\u00D8\u0111\u0110\u0142\u0141\u0127\u012601\u0410\u0412\u0415\u0405\u0406\u0408\u041A\u041C\u041D\u041E\u0420\u0421\u0422\u0423\u0425\u04AE\u051A\u051C\u04C0\u0430\u0435\u043E\u0440\u0441\u0443\u0445\u0455\u0456\u0458\u0501\u051B\u051D\u04BB\u04CF\u04AF\u0475\u0391\u0392\u0395\u0396\u0397\u0399\u039A\u039C\u039D\u039F\u03A1\u03A4\u03A5\u03A7\u03B1\u03B9\u03BA\u03BD\u03BF\u03C1\u03C5\u03C2\u03F3\u0585\u057D\u0570\u0578\u1D00\u0299\u1D04\u1D05\u1D07\u0262\u029C\u026A\u1D0A\u1D0B\u029F\u1D0D\u0274\u1D0F\u1D18\u0280\uA731\u1D1B\u1D1C\u1D20\u1D21\u028F\u1D22',
     'lijaigoOdDlLhHolABESlJKMHOPCTYXYQWlaeopcyxsijdqwhlyvABEZHlKMNOPTYXaikvopucjouhnabcdeghljklmnoprstuvwyz'),
     'rn', 'm'), 'vv', 'w'))
 $$;
@@ -301,10 +301,10 @@ end $$;
 create or replace function sixdegrees.clean_name(raw text, max int) returns text
 language plpgsql immutable set search_path = '' as $$
 declare
-  marks constant text := E'̀-ͯ᪰-᫿᷀-᷿⃐-⃿︠-︯';
+  marks constant text := E'\u0300-\u036F\u1AB0-\u1AFF\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F';
   name text := normalize(left(coalesce(raw, ''), 200), NFC);
 begin
-  name := regexp_replace(name, E'[[:cntrl:]­͏؜ᅟᅠ឴឵᠋-᠏​-‏ -‮⁠-⁯ㅤ︀-️﻿ﾠ￹-￻]', '', 'g');
+  name := regexp_replace(name, E'[[:cntrl:]\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u2028-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF9-\uFFFB]', '', 'g');
   name := regexp_replace(name, '([' || marks || ']{2})[' || marks || ']+', '\1', 'g');
   name := btrim(left(btrim(regexp_replace(name, '\s+', ' ', 'g')), max));
   if name = '' then
@@ -669,9 +669,16 @@ to anon, authenticated;
 -- table files, which is what the budget in sixdegrees.take measures, so the second job
 -- rewrites the tables to give it back; it's a job of its own because VACUUM can't run inside
 -- a function or alongside other statements. Rescheduling a job by name replaces it.
-create extension if not exists pg_cron with schema pg_catalog;
-grant usage on schema cron to postgres;
-grant all privileges on all tables in schema cron to postgres;
+--
+-- Supabase gives postgres what it needs for pg_cron itself whenever the extension is created,
+-- and that runs again even for "create extension if not exists", where it can fail. So the
+-- extension is only created when it's missing.
+do $$
+begin
+  if not exists (select 1 from pg_extension where extname = 'pg_cron') then
+    create extension pg_cron with schema pg_catalog;
+  end if;
+end $$;
 select cron.schedule('sixdegrees-tidy', '17 3 * * *', 'select sixdegrees.tidy()');
 select cron.schedule('sixdegrees-compact', '27 3 * * *',
   'vacuum full sixdegrees.results, sixdegrees.day_totals, sixdegrees.groups, sixdegrees.members, sixdegrees.quota, sixdegrees.source_quota, sixdegrees.players, sixdegrees.hints');
