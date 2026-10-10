@@ -4,7 +4,9 @@ import type { Mode, Qid } from './types';
  * Hash routes:
  *   #/                         home
  *   #/daily                    today's daily (kept for old links)
- *   #/daily/2026-10-08         a given day's daily; add /hard for hard mode, /star for the star daily
+ *   #/daily/2026-10-08         a given day's daily; add /hard for hard mode, /star for the star
+ *                              daily, /bollywood for the Bollywood daily, /bollywood-hard for
+ *                              its hard mode
  *   #/p/11571                  free play from a person; add /hard for hard mode
  *   #/p/11571/to/3454165       free play towards another star (normal mode only)
  *   #/archive, #/stats
@@ -36,7 +38,7 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === 'daily') {
     if (parts.length === 1) return { name: 'daily', day: null, mode: 'normal', vs };
     if (!/^\d{4}-\d{2}-\d{2}$/.test(parts[1])) return { name: 'unknown' };
-    const mode = modeAt(2, ['hard', 'star']);
+    const mode = modeAt(2, ['hard', 'star', 'bollywood', 'bollywood-hard']);
     return mode ? { name: 'daily', day: parts[1], mode, vs } : { name: 'unknown' };
   }
   if (parts[0] === 'p' && /^\d{1,12}$/.test(parts[1] ?? '')) {

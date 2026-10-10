@@ -13,21 +13,26 @@ import './styles/share.css';
 import './styles/squares.css';
 import './styles/challenge.css';
 import './styles/online.css';
-import { dailyStar, loadMeta } from './data';
-import { dailyPick, dayKey, isPlayableDay } from './logic';
+import { dailyFor, loadMeta } from './data';
+import { bollywoodDaily, dailyPick, dayKey, isPlayableDay, starDaily } from './logic';
 import { parseRoute } from './router';
 import { flushPending } from './online';
-import { migrateV1 } from './storage';
+import { loadWorld, migrateV1 } from './storage';
 import { renderArchive } from './ui/archive';
 import { renderGroup } from './ui/groups';
 import { renderHome } from './ui/home';
 import { startGame } from './ui/play';
-import { beginNavigation, isCurrent, renderError, renderMessage } from './ui/shell';
+import { beginNavigation, isCurrent, renderError, renderMessage, showWorld } from './ui/shell';
 import { renderStats } from './ui/stats';
 
 async function route(): Promise<void> {
   const gen = beginNavigation();
   const r = parseRoute(location.hash);
+  // A daily's colours are its puzzle's; free play towards a star settles them once it knows
+  // whose (startGame); every other page is in the player's own world.
+  if (r.name === 'daily') showWorld(bollywoodDaily(r.mode) ? 'bollywood' : 'hollywood');
+  else if (r.name === 'play' && r.target === undefined) showWorld('hollywood');
+  else showWorld(loadWorld());
   try {
     switch (r.name) {
       case 'home':
@@ -36,11 +41,14 @@ async function route(): Promise<void> {
         const today = dayKey(new Date());
         const day = r.day ?? today;
         if (!isPlayableDay(day, today)) return renderMessage('No daily that day', 'Dailies start on 8 October 2026, and each one opens on its day.');
-        if (r.mode === 'star') {
-          const star = await dailyStar(day);
+        if (starDaily(r.mode)) {
+          const star = await dailyFor(day, r.mode);
           if (!isCurrent(gen)) return;
-          if (!star) return renderMessage('No star daily that day', 'Every star was too close to that day’s start to make a game of it. The JT daily is still on.');
-          return await startGame({ qid: star.start, day, mode: 'star', vs: r.vs, target: star.star.id }, gen);
+          if (!star) {
+            if (bollywoodDaily(r.mode)) return renderMessage('No Bollywood daily that day', 'This copy of the game has no Bollywood daily for that day.');
+            return renderMessage('No star daily that day', 'Every star was too close to that day’s start to make a game of it. The JT daily is still on.');
+          }
+          return await startGame({ qid: star.start, day, mode: r.mode, vs: r.vs, target: star.star.id }, gen);
         }
         const { daily } = await loadMeta();
         return await startGame({ qid: dailyPick(daily, day), day, mode: r.mode, vs: r.vs }, gen);

@@ -11,8 +11,8 @@
   margin-bottom: 10px;
   padding: 4px 12px;
   border-radius: 999px;
-  background: #111111;
-  color: var(--lime);
+  background: var(--strip);
+  color: var(--strip-ink);
   font-family: var(--display);
   font-size: 12px;
 }
@@ -56,8 +56,8 @@
   margin: 0;
   min-width: 48px;
   padding: 4px 10px;
-  background: #111111;
-  color: var(--lime);
+  background: var(--strip);
+  color: var(--strip-ink);
   font-family: var(--display);
   font-size: 24px;
   text-align: center;
@@ -109,6 +109,16 @@
 
 .pill.star {
   background: var(--lime);
+  color: #111111;
+}
+
+.pill.bollywood {
+  background: var(--bolly);
+  color: #111111;
+}
+
+.pill.bollywood-hard {
+  background: var(--bolly-hard);
   color: #111111;
 }
 

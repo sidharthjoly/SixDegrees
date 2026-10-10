@@ -1,15 +1,15 @@
-import { dailyStar, getPerson, loadMeta, loadSearch, loadSearchTop, type StarDaily } from '../data';
+import { dailyBollywood, dailyStar, getPerson, loadBollywood, loadMeta, loadSearch, loadSearchTop, type StarDaily } from '../data';
 import { JT, dailyPick, dayKey, dayNumber, emojiRow, makeSearch, plural, shareText, type SearchHit } from '../logic';
 import { online } from '../online';
 import { href } from '../router';
-import { loadDaily, loadTarget, saveTarget, type DailyRecord } from '../storage';
-import type { Meta, Mode, Person, Qid, Target } from '../types';
+import { loadDaily, loadTarget, loadWorld, saveTarget, saveWorld, type DailyRecord, type World } from '../storage';
+import type { BollywoodFile, Meta, Mode, Person, Qid, Target } from '../types';
 import { h, yearOf, type Child } from './dom';
 import { groupsCard } from './groups';
 import { dropdown } from './menu';
 import { puzzleUrl, shareButton } from './share';
 import { startHomeFx } from './homefx';
-import { app, go, isCurrent, randomStart, renderLoading, tickerSlot } from './shell';
+import { app, go, isCurrent, randomStart, renderLoading, showWorld, tickerSlot } from './shell';
 import { statsBadge } from './stats';
 
 /** Median Timberlake number, from the build's distance histogram. */
@@ -22,15 +22,16 @@ export function medianDistance(meta: Meta): number {
   return rows.find(([, n]) => (acc += n) >= total / 2)?.[0] ?? 0;
 }
 
-function ticker(meta: Meta): HTMLElement {
-  const text = [
-    `${meta.people.toLocaleString()} people`,
-    `${meta.films.toLocaleString()} films`,
-    `most are ${plural(medianDistance(meta), 'film')} from JT`,
-    meta.bacon != null && `JT’s Bacon number is ${meta.bacon}`,
-    'a new daily every midnight',
-    'hints show up in your share',
-  ]
+function ticker(meta: Meta, bollywood: BollywoodFile | null): HTMLElement {
+  const lines = bollywood
+    ? [`${bollywood.stars.toLocaleString()} Bollywood stars`, `${bollywood.films.toLocaleString()} Hindi films`]
+    : [
+        `${meta.people.toLocaleString()} people`,
+        `${meta.films.toLocaleString()} films`,
+        `most are ${plural(medianDistance(meta), 'film')} from JT`,
+        meta.bacon != null && `JT’s Bacon number is ${meta.bacon}`,
+      ];
+  const text = [...lines, 'a new daily every midnight', 'hints show up in your share']
     .filter((t): t is string => !!t)
     .map((t) => `★ ${t.toUpperCase()}`)
     .join(' ');
@@ -38,40 +39,112 @@ function ticker(meta: Meta): HTMLElement {
   return h('div', { class: 'ticker' }, h('div', { class: 'ticker-track' }, h('span', null, text), h('span', { 'aria-hidden': 'true' }, text)));
 }
 
+/** Who Bollywood mode is Six Degrees of. */
+const SRK_NAME = 'Shah Rukh Khan';
+
 /** The sticker settles onto the page on the first home visit only, not after every game. */
 let introDone = false;
+
+/**
+ * The way to the other world: Bollywood mode from JT's page, and back again. Only the home
+ * page changes; links name their own puzzle, so one shared from either world opens the same
+ * game for anyone.
+ */
+function worldSwitch(world: World): HTMLElement {
+  const other: World = world === 'bollywood' ? 'hollywood' : 'bollywood';
+  return h(
+    'button',
+    {
+      type: 'button',
+      class: `chip world-switch to-${other}`,
+      onclick: () => {
+        saveWorld(other);
+        go(href({ name: 'home' }));
+      },
+    },
+    other === 'bollywood' ? 'Bollywood mode →' : '← JT mode',
+  );
+}
 
 export async function renderHome(gen: number): Promise<void> {
   renderLoading();
   const meta = await loadMeta();
   const day = dayKey(new Date());
-  // The star daily is a nice-to-have here: if its files won't load, the card just goes without.
-  const [daily, star] = await Promise.all([getPerson(dailyPick(meta.daily, day)), dailyStar(day).catch(() => null)]);
+  const world = loadWorld();
+  showWorld(world);
+  // The other dailies are nice-to-haves here: if their files won't load, the card goes without.
+  const [daily, star, bollywood, bolly] = await Promise.all([
+    world === 'hollywood' ? getPerson(dailyPick(meta.daily, day)) : null,
+    world === 'hollywood' ? dailyStar(day).catch(() => null) : null,
+    world === 'bollywood' ? loadBollywood().catch(() => null) : null,
+    world === 'bollywood' ? dailyBollywood(day).catch(() => null) : null,
+  ]);
+  const bollyStart = bolly && (await getPerson(bolly.start).catch(() => null));
   if (!isCurrent(gen)) return;
-  document.title = 'Six Degrees of Justin Timberlake';
-  const played = (mode: Mode) => {
+  const played = (mode: Mode, start: Qid, target?: Qid) => {
     const rec = loadDaily(day, mode);
-    return rec?.start === daily.id && (mode !== 'star' || rec.target === star?.star.id) ? rec : null;
+    return rec?.start === start && rec.target === target ? rec : null;
   };
-  tickerSlot.replaceChildren(ticker(meta));
+  tickerSlot.replaceChildren(ticker(meta, bollywood));
+  const main: Child[] =
+    world === 'bollywood'
+      ? [
+          h('h1', { class: 'title' }, `Six Degrees of ${SRK_NAME}`),
+          bollywood &&
+            h(
+              'p',
+              { class: 'lede' },
+              `${bollywood.stars.toLocaleString()} Bollywood stars, linked to SRK through ${bollywood.films.toLocaleString()} Hindi films. `,
+              'Pick a film, pick a co-star, and keep going until you land on Shah Rukh.',
+            ),
+          bollywood && bolly && bollyStart
+            ? dailyCard(day, bollyStart, {
+                mode: 'bollywood',
+                hardMode: 'bollywood-hard',
+                goal: bolly.star,
+                par: bolly.par,
+                played: played('bollywood', bolly.start, bolly.star.id),
+                playedHard: played('bollywood-hard', bolly.start, bolly.star.id),
+                hardNote: 'no hints, and SRK’s five best-known films are banned',
+              })
+            : h('p', { class: 'note' }, 'Bollywood mode isn’t in this copy of the game yet.'),
+        ]
+      : [
+          h('h1', { class: 'title' }, 'Six Degrees of Justin Timberlake'),
+          h(
+            'p',
+            { class: 'lede' },
+            `${meta.people.toLocaleString()} actors, athletes and filmmakers, all linked to JT through ${meta.films.toLocaleString()} films. `,
+            'Pick a film, pick a co-star, and keep going until you land on Justin.',
+          ),
+          daily &&
+            dailyCard(
+              day,
+              daily,
+              {
+                mode: 'normal',
+                hardMode: 'hard',
+                par: daily.normal.dist,
+                played: played('normal', daily.id),
+                playedHard: played('hard', daily.id),
+                hardNote: 'no hints, and JT’s five best-known films are banned',
+              },
+              star && starRow(day, daily, star, played('star', daily.id, star.star.id)),
+            ),
+        ];
+  document.title = world === 'bollywood' ? `Six Degrees of ${SRK_NAME}` : 'Six Degrees of Justin Timberlake';
   const home = h(
     'div',
     { class: 'home' + (introDone ? '' : ' intro') },
+    h('div', { class: 'home-main' }, worldSwitch(world), ...main, groupsCard() ?? '', startCard(meta, world, bollywood)),
     h(
       'div',
-      { class: 'home-main' },
-      h('h1', { class: 'title' }, 'Six Degrees of Justin Timberlake'),
-      h(
-        'p',
-        { class: 'lede' },
-        `${meta.people.toLocaleString()} actors, athletes and filmmakers, all linked to JT through ${meta.films.toLocaleString()} films. `,
-        'Pick a film, pick a co-star, and keep going until you land on Justin.',
-      ),
-      dailyCard(day, daily, played('normal'), played('hard'), star, played('star')),
-      groupsCard() ?? '',
-      startCard(meta),
+      { class: 'home-side' },
+      h('h2', { class: 'section-label' }, 'How to play · Top 3'),
+      howTo(meta, world, bollywood),
+      // The chart is of distances to JT, so Bollywood mode goes without.
+      world === 'hollywood' && histogram(meta),
     ),
-    h('div', { class: 'home-side' }, h('h2', { class: 'section-label' }, 'How to play · Top 3'), howTo(meta), histogram(meta)),
   );
   app.replaceChildren(
     home,
@@ -81,29 +154,53 @@ export async function renderHome(gen: number): Promise<void> {
       h('p', { class: 'footer-links' }, h('a', { href: href({ name: 'archive' }) }, 'Past dailies'), ' · ', h('a', { href: href({ name: 'stats' }) }, 'Your charts')),
       h('p', null, 'Film and cast data from ', h('a', { href: 'https://www.wikidata.org/', rel: 'noopener' }, 'Wikidata'), ` (CC0), built ${meta.built}. Paths and par come from a breadth-first search over every credit.`),
       online && h('p', null, 'Daily results are counted, without names, for the day’s global stats.'),
-      h('p', null, 'A fan project. Not affiliated with Justin Timberlake.'),
+      h('p', null, `A fan project. Not affiliated with ${world === 'bollywood' ? SRK_NAME : 'Justin Timberlake'}.`),
     ),
   );
   startHomeFx(home);
   introDone = true;
 }
 
-function dailyCard(day: string, person: Person, played: DailyRecord | null, playedHard: DailyRecord | null, star: StarDaily | null, playedStar: DailyRecord | null): HTMLElement {
+/** What a daily card shows: JT's daily, or Bollywood mode's, heading for Shah Rukh Khan. */
+interface DailySpec {
+  mode: 'normal' | 'bollywood';
+  hardMode: 'hard' | 'bollywood-hard';
+  /** Who it heads for, when it isn't JT. */
+  goal?: Target;
+  par: number;
+  played: DailyRecord | null;
+  playedHard: DailyRecord | null;
+  /** What hard mode takes away. */
+  hardNote: string;
+}
+
+function dailyCard(day: string, person: Person, d: DailySpec, extra: Child = null): HTMLElement {
   const n = dayNumber(day);
   const knownFor = person.films[0];
   // Names run from "Pelé" to "Edward Grey, 1st Viscount Grey of Fallodon"; the starburst's
   // points clip anything near its edge, so long names step down a size.
   const size = person.name.length > 26 ? ' longer' : person.name.length > 15 ? ' long' : '';
-  const hardHref = href({ name: 'daily', day, mode: 'hard', vs: null });
+  const playHref = href({ name: 'daily', day, mode: d.mode, vs: null });
+  const hardHref = href({ name: 'daily', day, mode: d.hardMode, vs: null });
   const side: Child[] = [statsBadge(), knownFor && h('p', { class: 'known' }, 'Known for ', h('em', null, knownFor.title), yearOf(knownFor))];
+  const { played, playedHard } = d;
   if (played) {
-    const text = shareText({ daily: n, mode: 'normal', start: person.name, moves: played.moves, par: played.par, gaveUp: played.gaveUp, url: puzzleUrl({ day, start: person.id, mode: 'normal' }) });
+    const text = shareText({
+      daily: n,
+      mode: d.mode,
+      start: person.name,
+      goal: d.goal && { id: d.goal.id, name: d.goal.name, mode: d.mode },
+      moves: played.moves,
+      par: played.par,
+      gaveUp: played.gaveUp,
+      url: puzzleUrl({ day, start: person.id, mode: d.mode, target: d.goal?.id }),
+    });
     side.push(
       h('p', { class: 'played' }, played.gaveUp ? 'You gave up today. ' : `You did it in ${plural(played.moves.length, 'film')}. `, h('span', { class: 'emoji' }, emojiRow(played.moves))),
-      h('div', { class: 'row' }, shareButton(text), h('a', { href: href({ name: 'daily', day, mode: 'normal', vs: null }), class: 'btn' }, 'Play again')),
+      h('div', { class: 'row' }, shareButton(text), h('a', { href: playHref, class: 'btn' }, 'Play again')),
     );
   } else {
-    side.push(h('a', { href: href({ name: 'daily', day, mode: 'normal', vs: null }), class: 'btn primary' }, 'Play the daily'));
+    side.push(h('a', { href: playHref, class: 'btn primary' }, 'Play the daily'));
   }
   side.push(
     h(
@@ -112,57 +209,62 @@ function dailyCard(day: string, person: Person, played: DailyRecord | null, play
       playedHard
         ? `Hard mode: ${playedHard.gaveUp ? 'gave up' : plural(playedHard.moves.length, 'film')} ${emojiRow(playedHard.moves)}`
         : h('a', { href: hardHref }, 'Try it in hard mode'),
-      ' · no hints, and JT’s five best-known films are banned',
+      ` · ${d.hardNote}`,
     ),
-    // For anyone who'd rather not end up at JT: the same start, heading for the day's star.
-    star &&
-      (playedStar
-        ? h(
-            'div',
-            { class: 'star-row' },
-            shareButton(
-              shareText({
-                daily: n,
-                mode: 'star',
-                start: person.name,
-                goal: { id: star.star.id, name: star.star.name, mode: 'star' },
-                moves: playedStar.moves,
-                par: playedStar.par,
-                gaveUp: playedStar.gaveUp,
-                url: puzzleUrl({ day, start: person.id, mode: 'star', target: star.star.id }),
-              }),
-              'Share',
-              false,
-            ),
-            h('span', { class: 'star-note' }, `Star daily, to ${star.star.name}: ${playedStar.gaveUp ? 'gave up' : plural(playedStar.moves.length, 'film')} ${emojiRow(playedStar.moves)} · par ${star.par}`),
-          )
-        : h(
-            'div',
-            { class: 'star-row' },
-            h('a', { href: href({ name: 'daily', day, mode: 'star', vs: null }), class: 'btn', 'aria-describedby': 'star-note' }, 'Not a JT fan?'),
-            h('span', { class: 'star-note', id: 'star-note' }, `Head for ${star.star.name} instead · par ${star.par}`),
-          )),
+    extra,
   );
   return h(
     'section',
-    { class: 'daily', 'aria-label': `Daily challenge number ${n}` },
+    { class: 'daily', 'aria-label': `${d.mode === 'bollywood' ? 'Bollywood daily' : 'Daily challenge'} number ${n}` },
     // The sticker is the biggest thing on the page, so it's also a way into the daily.
     h(
       'a',
-      { class: 'sticker-link', href: href({ name: 'daily', day, mode: 'normal', vs: null }), 'aria-label': `Play daily #${n}: ${person.name}, par ${person.normal.dist}` },
+      { class: 'sticker-link', href: playHref, 'aria-label': `Play daily #${n}: ${person.name}, par ${d.par}` },
       h(
         'div',
-        { class: 'sticker' },
+        { class: 'sticker' + (d.mode === 'normal' ? '' : ` ${d.mode}`) },
         h('span', { class: 'sticker-tag' }, `Daily #${n}`),
         h('span', { class: 'sticker-name' + size }, person.name),
-        h('span', { class: 'sticker-tag' }, `Par ${person.normal.dist}`),
+        h('span', { class: 'sticker-tag' }, `Par ${d.par}`),
       ),
     ),
     h('div', { class: 'daily-side' }, ...side),
   );
 }
 
-function howTo(meta: Meta): HTMLElement {
+/** For anyone who'd rather not end up at JT: the same start, heading for the day's star. */
+function starRow(day: string, person: Person, star: StarDaily, played: DailyRecord | null): HTMLElement {
+  const n = dayNumber(day);
+  if (!played) {
+    return h(
+      'div',
+      { class: 'star-row' },
+      h('a', { href: href({ name: 'daily', day, mode: 'star', vs: null }), class: 'btn', 'aria-describedby': 'star-note' }, 'Not a JT fan?'),
+      h('span', { class: 'star-note', id: 'star-note' }, `Head for ${star.star.name} instead · par ${star.par}`),
+    );
+  }
+  return h(
+    'div',
+    { class: 'star-row' },
+    shareButton(
+      shareText({
+        daily: n,
+        mode: 'star',
+        start: person.name,
+        goal: { id: star.star.id, name: star.star.name, mode: 'star' },
+        moves: played.moves,
+        par: played.par,
+        gaveUp: played.gaveUp,
+        url: puzzleUrl({ day, start: person.id, mode: 'star', target: star.star.id }),
+      }),
+      'Share',
+      false,
+    ),
+    h('span', { class: 'star-note' }, `Star daily, to ${star.star.name}: ${played.gaveUp ? 'gave up' : plural(played.moves.length, 'film')} ${emojiRow(played.moves)} · par ${star.par}`),
+  );
+}
+
+function howTo(meta: Meta, world: World, bollywood: BollywoodFile | null): HTMLElement {
   // --i staggers the cards as they appear: #3, then #2, then #1, like a countdown.
   const step = (i: number, num: string, title: string, sub: Child, extra = '') =>
     h(
@@ -171,13 +273,14 @@ function howTo(meta: Meta): HTMLElement {
       h('span', { class: 'track-num' }, num),
       h('div', { class: 'track-body' }, h('span', { class: 'track-title' }, title), h('span', { class: 'track-sub' }, sub)),
     );
+  const banned = world === 'bollywood' ? (bollywood?.hardBanned ?? []) : meta.hardBanned;
   return h(
     'ol',
     { class: 'countdown howto' },
     step(0, '#3', 'Pick a film', 'Any film your star was credited in.'),
     step(1, '#2', 'Pick a co-star', 'Anyone else in that film’s cast.'),
-    step(2, '#1', 'Land on Justin', 'Each move charts ▲ closer, ● no closer or ▼ further. Match par to hit #1.', ' number-one'),
-    meta.hardBanned.length > 0 && h('li', { class: 'howto-note' }, `Hard mode bans ${meta.hardBanned.map((f) => f.title).join(', ')}.`),
+    step(2, '#1', world === 'bollywood' ? 'Land on Shah Rukh' : 'Land on Justin', 'Each move charts ▲ closer, ● no closer or ▼ further. Match par to hit #1.', ' number-one'),
+    banned.length > 0 && h('li', { class: 'howto-note' }, `Hard mode bans ${banned.map((f) => f.title).join(', ')}.`),
   );
 }
 
@@ -244,9 +347,9 @@ const STAR_PICKS: [Qid, string][] = [
   [4547, 'Daniel Craig'],
 ];
 
-/** `n` different stars from the list, in random order. */
-function pickStars(n: number, random = Math.random): [Qid, string][] {
-  const pool = [...STAR_PICKS];
+/** `n` different stars from `list`, in random order. */
+function pickStars(n: number, list: [Qid, string][] = STAR_PICKS, random = Math.random): [Qid, string][] {
+  const pool = [...list];
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
@@ -257,17 +360,21 @@ function pickStars(n: number, random = Math.random): [Qid, string][] {
 /** The star the switch last turned to this visit, so turning it back on returns to them. */
 let lastStar: Qid | undefined;
 
-function startCard(meta: Meta): HTMLElement {
+function startCard(meta: Meta, world: World, bollywood: BollywoodFile | null): HTMLElement {
   const results = h('ul', { class: 'results', id: 'search-results' });
   let search: ((q: string, limit?: number) => SearchHit[]) | null = null;
   /** Searching the full list, not just the best-known names that answer first. */
   let complete = false;
   let loading: Promise<void> | null = null;
   let top: SearchHit | undefined;
-  const stars = meta.targets;
-  const saved = loadTarget();
-  /** The other star free play heads for; undefined for JT. A rebuild may have dropped a saved one. */
-  let target = stars.find((t) => t.id === saved)?.id;
+  // Each world has its own stars, and remembers its own choice among them.
+  const stars = meta.targets.filter((t) => (t.world ?? 'hollywood') === world);
+  const saved = loadTarget(world);
+  /**
+   * The other star free play heads for; undefined for JT. Bollywood mode always heads for one
+   * of its stars. A rebuild may have dropped a saved one.
+   */
+  let target = stars.find((t) => t.id === saved)?.id ?? (world === 'bollywood' ? stars[0]?.id : undefined);
   const playHref = (qid: Qid) => href({ name: 'play', qid, mode: 'normal', vs: null, target });
 
   const show = (q: string) => {
@@ -331,7 +438,7 @@ function startCard(meta: Meta): HTMLElement {
   });
 
   // One spare, for when the star being headed for is among the picks.
-  const picks = pickStars(6);
+  const picks = world === 'bollywood' && bollywood ? pickStars(6, bollywood.picks) : pickStars(6);
   const chips = h('div', { class: 'chips' });
   const drawChips = () =>
     chips.replaceChildren(
@@ -347,13 +454,18 @@ function startCard(meta: Meta): HTMLElement {
     'section',
     { class: 'card' },
     stars.length > 0 &&
-      goalSwitch(stars, target, (id) => {
-        target = id;
-        if (id) lastStar = id;
-        saveTarget(id ?? null);
-        drawChips();
-        show(input.value);
-      }),
+      goalSwitch(
+        stars,
+        target,
+        (id) => {
+          target = id;
+          if (id && world === 'hollywood') lastStar = id;
+          saveTarget(id ?? null, world);
+          drawChips();
+          show(input.value);
+        },
+        world === 'hollywood',
+      ),
     h('label', { class: 'label', for: 'start-search' }, 'Free play: pick any star'),
     input,
     results,
@@ -363,9 +475,10 @@ function startCard(meta: Meta): HTMLElement {
 
 /**
  * Free play's switch: head for JT, as the game is built around, or for one of the other stars.
- * (The daily has its own way to another star: the star daily.)
+ * (The daily has its own way to another star: the star daily.) Without `withJT`, as in
+ * Bollywood mode, it's just the menu of stars.
  */
-function goalSwitch(stars: Target[], initial: Qid | undefined, onChange: (target: Qid | undefined) => void): HTMLElement {
+function goalSwitch(stars: Target[], initial: Qid | undefined, onChange: (target: Qid | undefined) => void, withJT: boolean): HTMLElement {
   let target = initial;
   const toggle = (label: string, choose: () => void) => h('button', { type: 'button', class: 'chip', onclick: choose }, label);
   const jt = toggle('Justin Timberlake', () => set(undefined));
@@ -403,7 +516,7 @@ function goalSwitch(stars: Target[], initial: Qid | undefined, onChange: (target
     'div',
     { class: 'goal-switch' },
     h('p', { class: 'label', id: 'goal-label' }, 'Heading for'),
-    h('div', { class: 'chips', role: 'group', 'aria-labelledby': 'goal-label' }, jt, other),
+    withJT && h('div', { class: 'chips', role: 'group', 'aria-labelledby': 'goal-label' }, jt, other),
     pick,
   );
 }

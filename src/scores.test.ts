@@ -66,7 +66,7 @@ describe('modeStats', () => {
 });
 
 describe('streakDays', () => {
-  it('only counts normal and star dailies finished on their own day', () => {
+  it('counts the JT, star and Bollywood dailies finished on their own day, not hard mode', () => {
     const all = [
       rec('2026-10-10'),
       rec('2026-10-11', { late: true }),
@@ -76,8 +76,10 @@ describe('streakDays', () => {
       rec('2026-10-15', { moves: moves(9) }),
       rec('2026-10-16', { mode: 'star', target: 3454165 }),
       rec('2026-10-17', { mode: 'star', target: 3454165, late: true }),
+      rec('2026-10-18', { mode: 'bollywood', target: 9535 }),
+      rec('2026-10-19', { mode: 'bollywood-hard', target: 9535 }),
     ];
-    expect([...streakDays(all)].sort()).toEqual(['2026-10-10', '2026-10-15', '2026-10-16']);
+    expect([...streakDays(all)].sort()).toEqual(['2026-10-10', '2026-10-15', '2026-10-16', '2026-10-18']);
   });
 });
 

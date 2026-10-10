@@ -109,7 +109,7 @@
 }
 
 .share-format[aria-pressed='true'] {
-  background: var(--lime);
+  background: var(--accent);
   color: #111111;
   box-shadow: 3px 3px 0 var(--shadow);
 }

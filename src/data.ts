@@ -1,5 +1,5 @@
-import { dailyPick, starOfDay } from './logic';
-import type { Film, FilmRow, Loader, Meta, Person, PersonRow, Qid, Reach, SearchRow, Target, TargetRow } from './types';
+import { bollywoodOfDay, dailyPick, starOfDay } from './logic';
+import type { BollywoodFile, Film, FilmRow, Loader, Meta, Person, PersonRow, Qid, Reach, SearchRow, Target, TargetRow } from './types';
 
 /**
  * Data lives under a content-hashed folder whose name is compiled into the bundle, so a
@@ -38,6 +38,8 @@ function once<T>(cache: Map<string, Promise<T>>, key: string, load: () => Promis
 const files = new Map<string, Promise<unknown>>();
 
 export const loadMeta = () => once(files, 'meta', () => getJson<Meta>('meta.json')) as Promise<Meta>;
+/** Bollywood mode's daily and suggestions. */
+export const loadBollywood = () => once(files, 'bollywood', () => getJson<BollywoodFile>('bollywood.json')) as Promise<BollywoodFile>;
 export const loadSearch = () => once(files, 'search', () => getJson<SearchRow[]>('search.json')) as Promise<SearchRow[]>;
 /** The best-known rows of search.json, small enough to answer the first keystrokes. */
 export const loadSearchTop = () => once(files, 'search-top', () => getJson<SearchRow[]>('search-top.json')) as Promise<SearchRow[]>;
@@ -93,39 +95,54 @@ export async function getFilm(id: Qid): Promise<Film> {
   return { id, title, year, fame, cast: cast.map(([pid, name, fame]) => ({ id: pid, name, fame })) };
 }
 
-/** How far someone is from one of the other stars free play can head for (meta.targets). */
-export async function getReach(target: Qid, id: Qid): Promise<Reach> {
+/** Where someone's rows towards a star are: Bollywood hard mode's, without its banned films, have their own. */
+export const towardPath = (star: Qid, id: Qid, shards: number, hard = false) => `t/${star}${hard ? '-hard' : ''}/${id % shards}.json`;
+
+/** How far someone is from one of the other stars free play can head for (meta.targets); `hard` for Bollywood hard mode. */
+export async function getReach(target: Qid, id: Qid, hard = false): Promise<Reach> {
   const { targetShards } = await loadMeta();
-  const r = await shardRow<TargetRow>(`t/${target}/${id % targetShards}.json`, id);
+  const r = await shardRow<TargetRow>(towardPath(target, id, targetShards, hard), id);
+  // Hard mode's files leave out whoever only links through its banned films.
+  if (!r && hard) return reach(-1, 0, 0);
   if (!r) throw new Error(`No one with id Q${id} is connected to Q${target}`);
   return reach(...r);
 }
 
 export const loader: Loader = { person: getPerson, film: getFilm, reach: getReach };
 
-/** The day's star daily: its start, its star and par, or null when no star will do (see starOfDay). */
+/** A day's star or Bollywood daily: its start, its star and par, or null when that day has none. */
 export interface StarDaily {
   start: Qid;
   star: Target;
   par: number;
 }
 
-/**
- * The star daily for `day`, picked as the Worker picks it when it checks a result
- * (src/route-check.ts): someone without a row towards a star is Infinity away.
- */
+/** How far `start` is from a star, as the Worker reads it (src/route-check.ts): Infinity without a row. */
+async function distanceTo(star: Qid, start: Qid, hard = false): Promise<number> {
+  const { targetShards } = await loadMeta();
+  const r = await shardRow<TargetRow>(towardPath(star, start, targetShards, hard), start);
+  return r && r[0] >= 0 ? r[0] : Infinity;
+}
+
+/** The star daily for `day` (see starOfDay), picked as the Worker picks it when it checks a result. */
 export async function dailyStar(day: string): Promise<StarDaily | null> {
   const meta = await loadMeta();
   const start = dailyPick(meta.daily, day);
-  const found = await starOfDay(
-    meta.targets.map((t) => t.id),
-    day,
-    start,
-    async (star) => {
-      const r = await shardRow<TargetRow>(`t/${star}/${start % meta.targetShards}.json`, start);
-      return r && r[0] >= 0 ? r[0] : Infinity;
-    },
-  );
+  const found = await starOfDay(meta.targets, day, start, (star) => distanceTo(star, start));
   const star = found && meta.targets.find((t) => t.id === found.id);
   return found && star ? { start, star, par: found.par } : null;
 }
+
+/** The Bollywood daily for `day` (see bollywoodOfDay), picked as the Worker picks it; `hard` for par in hard mode. */
+export async function dailyBollywood(day: string, hard = false): Promise<StarDaily | null> {
+  const [meta, file] = await Promise.all([loadMeta(), loadBollywood()]);
+  const pick = bollywoodOfDay(file, day);
+  const star = pick && meta.targets.find((t) => t.id === pick.goal);
+  if (!pick || !star) return null;
+  const par = await distanceTo(pick.goal, pick.start, hard);
+  return par === Infinity ? null : { start: pick.start, star, par };
+}
+
+/** The day's daily heading for another star, in the mode given. */
+export const dailyFor = (day: string, mode: 'star' | 'bollywood' | 'bollywood-hard') =>
+  mode === 'star' ? dailyStar(day) : dailyBollywood(day, mode === 'bollywood-hard');

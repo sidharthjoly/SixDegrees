@@ -143,6 +143,17 @@ describe('dailyPage', () => {
     expect(page).not.toContain(STAR_TAG);
     expect(imagePath('2026-10-19')).toBe('og/2026-10-19.png');
     expect(imagePath('2026-10-19', 'hard')).toBe('og/2026-10-19.png');
+    expect(imagePath('2026-10-19', 'bollywood')).toBe('og/2026-10-19-bollywood.png');
+    const bolly = dailyPage({ site, day: '2026-10-19', number: 12, mode: 'bollywood', name: 'Kajol', par: 2, star: { id: 9535, name: 'Shah Rukh Khan' } }, app);
+    expect(bolly).toContain('<title>Six Degrees of Shah Rukh Khan #12</title>');
+    expect(bolly).toContain('<meta property="og:url" content="https://sixdegrees.sidharthjoly.com/d/2026-10-19/bollywood/">');
+    expect(bolly).toContain(`history.replaceState(null, '', "#/daily/2026-10-19/bollywood" + location.search)`);
+    // Bollywood hard mode shares its image, as JT's hard mode does.
+    expect(imagePath('2026-10-19', 'bollywood-hard')).toBe('og/2026-10-19-bollywood.png');
+    const hard = dailyPage({ site, day: '2026-10-19', number: 12, mode: 'bollywood-hard', name: 'Kajol', par: 2, star: { id: 9535, name: 'Shah Rukh Khan' } }, app);
+    expect(hard).toContain('<title>Six Degrees of Shah Rukh Khan #12 (hard)</title>');
+    expect(hard).toContain('<meta property="og:url" content="https://sixdegrees.sidharthjoly.com/d/2026-10-19/bollywood-hard/">');
+    expect(hard).toContain('og/2026-10-19-bollywood.png');
   });
 
   it('refuses a page that has lost its markers, rather than publish the home page\'s tags', () => {
@@ -173,6 +184,8 @@ describe('notFoundPage', () => {
     expect(redirect('/d/2027-03-01/', '?vs=abc')).toEqual(['https://sixdegrees.example/#/daily/2027-03-01?vs=abc']);
     expect(redirect('/repo/d/2027-03-01/hard/')).toEqual(['https://sixdegrees.example/repo/#/daily/2027-03-01/hard']);
     expect(redirect('/d/2027-03-01/star/', '?vs=abc')).toEqual(['https://sixdegrees.example/#/daily/2027-03-01/star?vs=abc']);
+    expect(redirect('/d/2027-03-01/bollywood/')).toEqual(['https://sixdegrees.example/#/daily/2027-03-01/bollywood']);
+    expect(redirect('/d/2027-03-01/bollywood-hard/')).toEqual(['https://sixdegrees.example/#/daily/2027-03-01/bollywood-hard']);
     expect(redirect('/nothing-here')).toEqual([]);
   });
 

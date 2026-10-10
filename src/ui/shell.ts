@@ -1,5 +1,6 @@
-import { StaleDataError, getReach, loadMeta } from '../data';
+import { StaleDataError, getReach, loadBollywood, loadMeta } from '../data';
 import { href } from '../router';
+import type { World } from '../storage';
 import type { Mode, Qid } from '../types';
 import { h } from './dom';
 import { leaveScreen } from './leave';
@@ -31,11 +32,13 @@ export function go(hash: string): void {
 /**
  * Free play from someone in the daily pool: famous, and at least two films from JT. Heading
  * for another star, skip that star, and try a few times for someone who isn't one of their
- * co-stars, which would be a one-move game.
+ * co-stars, which would be a one-move game. A Bollywood star's starts are Bollywood's own, the
+ * ones the Bollywood daily picks from (all at least two films from Shah Rukh Khan).
  */
 export async function randomStart(mode: Mode = 'normal', target?: Qid): Promise<void> {
-  const { daily } = await loadMeta();
-  const pool = daily.filter((id) => id !== target);
+  const { daily, targets } = await loadMeta();
+  const bollywood = targets.find((t) => t.id === target)?.world === 'bollywood';
+  const pool = (bollywood ? (await loadBollywood()).starts : daily).filter((id) => id !== target);
   const pick = () => pool[Math.floor(Math.random() * pool.length)];
   let qid = pick();
   for (let tries = 1; target && tries < 5; tries++) {
@@ -48,8 +51,27 @@ export async function randomStart(mode: Mode = 'normal', target?: Qid): Promise<
 
 const DEFAULT_TITLE = 'Six Degrees of Justin Timberlake';
 
+/** The browser toolbar's colour in each world, light and dark: the page background (index.html). */
+const TOOLBAR: Record<World, [string, string]> = { hollywood: ['#b9b4ff', '#1b1745'], bollywood: ['#ffbf57', '#3a0b1d'] };
+
+/**
+ * Which world's colours the page is in: Bollywood mode's (styles/base.css) or JT's. The home page
+ * and the pages around it follow the player's choice; a game follows its puzzle, so a Bollywood
+ * daily is in Bollywood's colours whoever opens it.
+ */
+export function showWorld(world: World): void {
+  const root = document.documentElement;
+  if (world === 'bollywood') root.dataset.world = 'bollywood';
+  else delete root.dataset.world;
+  for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
+    meta.content = TOOLBAR[world][meta.media.includes('dark') ? 1 : 0];
+  }
+}
+
+const shownWorld = (): World => (document.documentElement.dataset.world === 'bollywood' ? 'bollywood' : 'hollywood');
+
 export function topBar(): HTMLElement {
-  return h('header', { class: 'bar' }, h('a', { href: '#/', class: 'home-link' }, 'Six Degrees of JT'));
+  return h('header', { class: 'bar' }, h('a', { href: '#/', class: 'home-link' }, shownWorld() === 'bollywood' ? 'Six Degrees of SRK' : 'Six Degrees of JT'));
 }
 
 export function renderLoading(text = 'Loading…'): void {

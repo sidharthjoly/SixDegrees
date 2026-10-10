@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { forgetSiteData, handleWrite, sourceAddress, sourceKey, WRITES, type GateEnv } from './gate';
 import { JT, STAR_CANDIDATES, dayOfNumber, starOfDay } from './logic';
 import { MAX_CHECKED_STEPS } from './route-check';
-import { A, B, F1, F2, F3, F6, FAR, START, route, siteFile } from './route-fixture';
+import { A, B, BOLLY, C, D, F1, F2, F3, F4, F6, F7, F8, F9, FAR, START, route, siteFile } from './route-fixture';
 
 describe('sourceAddress', () => {
   it('keeps IPv4 addresses as they are', () => {
@@ -244,43 +244,89 @@ describe('handleWrite', () => {
       expect(sentTo(upstream)).toEqual([]);
     });
 
-    it('stay within a Worker’s 50 requests for the longest star route it checks, every star it may look at included', async () => {
-      // START -f1- 1 -f2- 2 … -f40- 40, the star; everyone in a shard of their own, and the
-      // other stars all one film from START, ranked so the daily looks at every one first.
+    /**
+     * The longest route the gate checks, START -f1- 1 -f2- 2 … -f40- 40 (the goal), everyone in
+     * a shard of their own, sent as a star or Bollywood daily. For the star daily the other
+     * stars are all one film from START and ranked first, so it looks at every one it may.
+     */
+    async function longestRoute(mode: 'star' | 'bollywood' | 'bollywood-hard') {
       const SHARDS = 64;
       const id = (i: number) => 1000 + i;
       const film = (i: number) => 5000 + i;
-      const star = id(MAX_CHECKED_STEPS);
-      const near = Array.from({ length: STAR_CANDIDATES - 1 }, (_, i) => 900 + i);
-      const stars = [...near, star];
-      const distance = async (s: number) => (s === star ? MAX_CHECKED_STEPS : 1);
-      let day = '';
-      for (let n = 1; !day; n++) {
-        const asked: number[] = [];
-        const pick = await starOfDay(stars, dayOfNumber(n), id(0), (s) => (asked.push(s), distance(s)));
-        if (pick?.id === star && asked.length === STAR_CANDIDATES) day = dayOfNumber(n);
+      const goal = id(MAX_CHECKED_STEPS);
+      const near = mode === 'star' ? Array.from({ length: STAR_CANDIDATES - 1 }, (_, i) => 900 + i) : [];
+      const stars = [...near, goal].map((s) => ({ id: s, name: `Star ${s}`, film: '', ...(mode !== 'star' && { world: 'bollywood' as const }) }));
+      const distance = async (s: number) => (s === goal ? MAX_CHECKED_STEPS : 1);
+      let day = dayOfNumber(1);
+      if (mode === 'star') {
+        day = '';
+        for (let n = 1; !day; n++) {
+          const asked: number[] = [];
+          const pick = await starOfDay(stars, dayOfNumber(n), id(0), (s) => (asked.push(s), distance(s)));
+          if (pick?.id === goal && asked.length === STAR_CANDIDATES) day = dayOfNumber(n);
+        }
       }
       const credits = (i: number) => [i, i + 1].filter((f) => f >= 1 && f <= MAX_CHECKED_STEPS).map((f) => [film(f), `Film ${f}`, 2000, 1]);
       const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
       const upstream = vi.fn<typeof fetch>(async (input) => {
         const url = String(input);
         if (url === `${ORIGIN}/data/version.json`) return json({ version: 'test' });
-        if (url.endsWith('/meta.json')) return json({ daily: [id(0)], hardBanned: [], shards: SHARDS, targets: stars.map((s) => ({ id: s, name: `Star ${s}`, film: '' })), targetShards: SHARDS });
+        if (url.endsWith('/meta.json')) return json({ daily: [id(0)], hardBanned: [], shards: SHARDS, targets: stars, targetShards: SHARDS });
+        if (url.endsWith('/bollywood.json')) return json({ goal, starts: [id(0)], hardBanned: [], picks: [], stars: 1, films: 1 });
         const p = /\/p\/(\d+)\.json$/.exec(url);
         if (p) {
           const i = (Number(p[1]) - 1000 + SHARDS * 100) % SHARDS;
           return json({ [id(i)]: [`P${i}`, 1, 2, 0, 0, credits(i), 2, 0, 0] });
         }
-        const t = /\/t\/(\d+)\/\d+\.json$/.exec(url);
+        const t = /\/t\/(\d+)(?:-hard)?\/\d+\.json$/.exec(url);
         if (t) return json({ [id(0)]: [await distance(Number(t[1])), film(1), id(1)] });
         return new Response(null, { status: 204 });
       });
       const steps = Array.from({ length: MAX_CHECKED_STEPS }, (_, i): [number, number] => [film(i + 1), id(i + 1)]);
-      const res = await handleWrite(call('sixdegrees_submit', { ...result, p_day: day, p_mode: 'star', p_route: route(...steps) }), env, upstream);
+      const res = await handleWrite(call('sixdegrees_submit', { ...result, p_day: day, p_mode: mode, p_route: route(...steps) }), env, upstream);
+      return { res, upstream, reads: (part: string) => upstream.mock.calls.filter(([url]) => String(url).includes(part)).length };
+    }
+
+    it('stay within a Worker’s 50 requests for the longest star route it checks, every star it may look at included', async () => {
+      const { res, upstream, reads } = await longestRoute('star');
       expect(res.status).toBe(204);
       expect(sentTo(upstream)[0].args).toMatchObject({ p_par: MAX_CHECKED_STEPS, p_films: MAX_CHECKED_STEPS, p_gave_up: false });
-      expect(upstream.mock.calls.filter(([url]) => String(url).includes('/t/'))).toHaveLength(STAR_CANDIDATES);
+      expect(reads('/t/')).toBe(STAR_CANDIDATES);
       expect(upstream.mock.calls.length).toBeLessThanOrEqual(50);
+    });
+
+    it('stay within a Worker’s 50 requests for the longest Bollywood route it checks, in either mode', async () => {
+      for (const mode of ['bollywood', 'bollywood-hard'] as const) {
+        forgetSiteData();
+        const { res, upstream, reads } = await longestRoute(mode);
+        expect(res.status).toBe(204);
+        expect(sentTo(upstream)[0].args).toMatchObject({ p_mode: mode, p_par: MAX_CHECKED_STEPS, p_films: MAX_CHECKED_STEPS });
+        expect(reads(mode === 'bollywood' ? `/t/${1000 + MAX_CHECKED_STEPS}/` : `/t/${1000 + MAX_CHECKED_STEPS}-hard/`)).toBe(1);
+        expect(reads('/t/')).toBe(1);
+        expect(reads('/bollywood.json')).toBe(1);
+        expect(upstream.mock.calls.length).toBeLessThanOrEqual(50);
+      }
+    });
+
+    it('in the Bollywood daily go from its own start to its star', async () => {
+      const upstream = answering(204, '');
+      const bolly = { ...result, p_mode: 'bollywood', p_par: 9, p_route: route([F4, C], [F7, BOLLY]) };
+      expect((await handleWrite(call('sixdegrees_submit', bolly), env, upstream)).status).toBe(204);
+      expect(sentTo(upstream)[0].args).toMatchObject({ p_mode: 'bollywood', p_par: 2, p_films: 2, p_first_film: F4 });
+      forgetSiteData();
+      const old = answering(204, '', false);
+      expect((await handleWrite(call('sixdegrees_submit', bolly), env, old)).status).toBe(400);
+      expect(sentTo(old)).toEqual([]);
+    });
+
+    it('in Bollywood hard mode take par without its banned films, and refuse a route through them', async () => {
+      const upstream = answering(204, '');
+      const hard = { ...result, p_mode: 'bollywood-hard', p_hints: 0, p_par: 9, p_route: route([F6, FAR], [F8, D], [F9, BOLLY]) };
+      expect((await handleWrite(call('sixdegrees_submit', hard), env, upstream)).status).toBe(204);
+      expect(sentTo(upstream)[0].args).toMatchObject({ p_mode: 'bollywood-hard', p_par: 3, p_films: 3, p_first_film: F6 });
+      const banned = await handleWrite(call('sixdegrees_submit', { ...hard, p_route: route([F4, C], [F7, BOLLY]) }), env, upstream);
+      expect(banned.status).toBe(400);
+      expect(sentTo(upstream)).toHaveLength(1);
     });
 
     it('read the data once and keep it for the next', async () => {
@@ -336,6 +382,16 @@ describe('handleWrite', () => {
       expect(sentTo(upstream)).toMatchObject([{ fn: 'sixdegrees_hint', args: { ...ask, p_mode: 'star' } }]);
     });
 
+    it('in the Bollywood daily lead towards its star', async () => {
+      const upstream = answering(204, '');
+      const res = await handleWrite(call('sixdegrees_hint', { ...ask, p_mode: 'bollywood', p_person: B }), env, upstream);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ film: F4, person: C });
+      const there = await handleWrite(call('sixdegrees_hint', { ...ask, p_mode: 'bollywood', p_person: BOLLY }), env, upstream);
+      expect(there.status).toBe(400);
+      expect(sentTo(upstream)).toHaveLength(1);
+    });
+
     it('in the star daily don’t exist at the star, or while the site’s data has no other stars', async () => {
       for (const [bad, stars] of [[{ ...ask, p_mode: 'star', p_person: FAR }, true], [{ ...ask, p_mode: 'star' }, false]] as const) {
         forgetSiteData();
@@ -348,7 +404,7 @@ describe('handleWrite', () => {
 
     it('don’t exist in hard mode, at JT, or for someone the game doesn’t have', async () => {
       const upstream = answering(204, '');
-      for (const bad of [{ ...ask, p_mode: 'hard' }, { ...ask, p_person: JT }, { ...ask, p_person: 999 }, { ...ask, p_person: '100' }, { ...ask, p_day: 'today' }]) {
+      for (const bad of [{ ...ask, p_mode: 'hard' }, { ...ask, p_mode: 'bollywood-hard', p_person: B }, { ...ask, p_person: JT }, { ...ask, p_person: 999 }, { ...ask, p_person: '100' }, { ...ask, p_day: 'today' }]) {
         const res = await handleWrite(call('sixdegrees_hint', bad), env, upstream);
         expect(res.status).toBe(400);
         expect((await res.json()).code).toBe('22023');

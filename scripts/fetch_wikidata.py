@@ -20,6 +20,7 @@ PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX wikibase: <http://wikiba.se/ontology#>
 PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX schema: <http://schema.org/>
 """
 
 # Feature-length film classes. Short films, music videos, TV specials, sketches and
@@ -77,6 +78,17 @@ SELECT DISTINCT ?person ?alias WHERE {{
   {{ SELECT DISTINCT ?person WHERE {{ {FILM_FILTER} ?film wdt:P161|wdt:P725 ?person . ?person wdt:P31 wd:Q5 . }} }}
   ?person skos:altLabel ?alias .
   FILTER(LANG(?alias) = "en" || LANG(?alias) = "mul")
+}}""",
+    # Bollywood: films in Hindi (or Urdu, or Hindustani, as older ones often are), for
+    # Bollywood mode. With their English Wikipedia article's title, the name fans know them
+    # by: Wikidata's English label is sometimes a translation ("Sometimes Happiness Sometimes
+    # Sadness..." for Kabhi Khushi Kabhie Gham...).
+    "hindi": f"""
+SELECT DISTINCT ?film ?title WHERE {{
+  {FILM_FILTER}
+  VALUES ?lang {{ wd:Q1568 wd:Q1617 wd:Q11051 }}
+  ?film wdt:P364 ?lang .
+  OPTIONAL {{ ?article schema:about ?film ; schema:isPartOf <https://en.wikipedia.org/> ; schema:name ?title . }}
 }}""",
 }
 

@@ -1,8 +1,8 @@
 import { CostarSearch, type CostarHit } from '../costars';
-import { StaleDataError, getFilm, getPerson, loadMeta, loader } from '../data';
+import { StaleDataError, getFilm, getPerson, loadBollywood, loadMeta, loader } from '../data';
 import { keyCommand, keysWhileMounted } from '../keys';
 import { foldList } from '../lists';
-import { JT, dayNumber, filterByText, fold, goalFor, grade, optimalPath, plural, reachIn, reachTo, type Goal, type Grade } from '../logic';
+import { JT, dayNumber, filterByText, fold, goalFor, grade, hardRules, optimalPath, plural, reachIn, reachTo, starDaily, type Goal, type Grade } from '../logic';
 import { OnlineError, dailyHint, online } from '../online';
 import type { Film, FilmRef, Mode, Person, PersonRef, Qid, Reach } from '../types';
 import { challengeBanner } from './challenge';
@@ -10,7 +10,7 @@ import { feel } from './haptics';
 import { h, yearOf, type Child } from './dom';
 import { Picker, type PickGroup, type PickOption } from './picker';
 import { finish } from './result';
-import { app, currentGeneration, isCurrent, renderError, renderLoading, renderMessage, topBar } from './shell';
+import { app, currentGeneration, isCurrent, renderError, renderLoading, renderMessage, showWorld, topBar } from './shell';
 import { tracks } from './tracks';
 import { afterKeyboard, isPhone, trackKeyboard } from './viewport';
 
@@ -78,7 +78,7 @@ export interface StartOptions {
   day: string | null;
   mode: Mode;
   vs: string | null;
-  /** One of the other stars, for free play or the star daily; left out for JT. */
+  /** One of the other stars, for free play or the star and Bollywood dailies; left out for JT. */
   target?: Qid;
 }
 
@@ -87,28 +87,32 @@ export async function startGame(opts: StartOptions, gen: number): Promise<void> 
   game = null;
   const [start, meta] = await Promise.all([getPerson(opts.qid), loadMeta()]);
   if (!isCurrent(gen)) return;
-  // A JT daily never names a star: only free play and the star daily do.
-  const goal = goalFor(meta, opts.day && opts.mode !== 'star' ? undefined : opts.target, opts.mode);
+  // A JT daily never names a star: only free play and the star and Bollywood dailies do.
+  const goal = goalFor(meta, opts.day && !starDaily(opts.mode) ? undefined : opts.target, opts.mode);
   if (!goal) {
     renderMessage('Not one of the stars', 'Free play heads for Justin Timberlake or one of the stars listed on the home page, and that link names someone else.');
     return;
   }
+  showWorld(meta.targets.find((t) => t.id === goal.id)?.world === 'bollywood' ? 'bollywood' : 'hollywood');
   if (start.id === goal.id) {
     if (goal.id === JT) renderMessage('That’s Justin himself', 'He is zero films away from himself. Pick someone else.');
     else renderMessage(`That’s ${goal.name}`, `${goal.name} is where this game ends. Pick someone else to start from.`);
     return;
   }
-  if (opts.mode === 'hard' && start.hard.dist === Infinity) {
-    renderMessage('Not possible in hard mode', `${start.name} only links to Justin through films hard mode bans. Try normal mode.`);
+  const [reach, banned] = await Promise.all([
+    reachTo(start, goal, loader),
+    opts.mode === 'hard' ? meta.hardBanned : opts.mode === 'bollywood-hard' ? loadBollywood().then((b) => b.hardBanned) : [],
+  ]);
+  if (!isCurrent(gen)) return;
+  if (hardRules(opts.mode) && reach.dist === Infinity) {
+    renderMessage('Not possible in hard mode', `${start.name} only links to ${goal.id === JT ? 'Justin' : goal.name} through films hard mode bans. Try normal mode.`);
     return;
   }
-  const reach = await reachTo(start, goal, loader);
-  if (!isCurrent(gen)) return;
   game = {
     day: opts.day,
     mode: opts.mode,
     goal,
-    banned: new Set(opts.mode === 'hard' ? meta.hardBanned.map((f) => f.id) : []),
+    banned: new Set(banned.map((f) => f.id)),
     vs: opts.vs,
     start,
     reach,
@@ -124,8 +128,10 @@ export async function startGame(opts: StartOptions, gen: number): Promise<void> 
   window.scrollTo({ top: 0 });
 }
 
+const MODE_TAG: Record<Mode, string> = { normal: '', hard: ' · Hard', star: ' · Star', bollywood: ' · Bollywood', 'bollywood-hard': ' · Bollywood hard' };
+
 export function label(g: Pick<Game, 'day' | 'mode'>): string {
-  return (g.day ? `Daily #${dayNumber(g.day)}` : 'Free play') + (g.mode === 'hard' ? ' · Hard' : g.mode === 'star' ? ' · Star' : '');
+  return (g.day ? `Daily #${dayNumber(g.day)}` : 'Free play') + MODE_TAG[g.mode];
 }
 
 function renderPlay(scroll = false): void {
@@ -170,7 +176,7 @@ function renderPlay(scroll = false): void {
           'div',
           { class: 'actions' },
           h('button', { class: 'btn', type: 'button', disabled: g.busy || (g.moves.length === 0 && !g.film), onclick: undo }, '↶ Undo'),
-          g.mode !== 'hard' && h('button', { class: 'btn', type: 'button', disabled: g.busy || g.hint !== null, onclick: showHint }, '💡 Hint'),
+          !hardRules(g.mode) && h('button', { class: 'btn', type: 'button', disabled: g.busy || g.hint !== null, onclick: showHint }, '💡 Hint'),
           h('button', { class: 'btn', type: 'button', disabled: g.busy, onclick: () => void giveUp() }, 'Show me the way'),
         ),
         view.hintTrouble ? h('p', { class: 'note', role: 'status' }, view.hintTrouble) : null,
@@ -241,7 +247,7 @@ function keysLegend(g: Game, id: string): HTMLElement {
   // Each key stays on one line with its label when the legend wraps.
   const entry = (keys: string[], what: string) => h('span', null, ...keys.map((k) => h('kbd', null, k)), ` ${what}`);
   const entries = [entry(['↑', '↓'], 'pick'), entry(['Enter'], 'choose'), entry(['Esc'], g.film ? 'back' : g.moves.length > 0 ? 'undo' : 'clear')];
-  if (g.mode !== 'hard' && !g.hint) entries.push(entry([isMac() ? '⌥H' : 'Alt+H'], 'hint'));
+  if (!hardRules(g.mode) && !g.hint) entries.push(entry([isMac() ? '⌥H' : 'Alt+H'], 'hint'));
   return h('p', { class: 'keys-legend', id }, ...entries.flatMap((e, i) => (i ? [' · ', e] : [e])));
 }
 
@@ -521,7 +527,7 @@ export function choosePerson(ref: PersonRef, via?: FilmRef): Promise<void> {
   return guarded(async (g) => {
     const from = reachHere(g);
     // Another star's distances are in their own files: fetch that alongside the person.
-    const [person, toward] = await Promise.all([getPerson(ref.id), g.goal.id === JT ? null : loader.reach(g.goal.id, ref.id)]);
+    const [person, toward] = await Promise.all([getPerson(ref.id), g.goal.id === JT ? null : loader.reach(g.goal.id, ref.id, hardRules(g.mode))]);
     const reach = toward ?? reachIn(person, g.mode);
     const graded = grade(from.dist, reach.dist);
     g.moves.push({ film, person, reach, grade: graded, hinted: g.hint !== null });
@@ -557,7 +563,7 @@ export function undo(): void {
  */
 export function showHint(): void {
   const g = game;
-  if (!g || g.busy || g.mode === 'hard' || g.hint) return;
+  if (!g || g.busy || hardRules(g.mode) || g.hint) return;
   const here = current(g);
   const show = (step: { film: Qid; person: Qid }) => {
     g.hint = step;

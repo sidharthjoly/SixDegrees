@@ -55,7 +55,7 @@
 }
 
 .streak-badge:hover {
-  background: var(--lime);
+  background: var(--accent);
   color: #111111;
 }
 
@@ -159,7 +159,7 @@
 
 /* Keep home.css's hover/focus highlight, which the hatching above would otherwise override. */
 .score-chart .col:is(:hover, :focus-visible) .bar-fill.gave-up {
-  background: var(--lime);
+  background: var(--accent);
 }
 
 .score-chart.small {

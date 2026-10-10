@@ -11,7 +11,7 @@
 .everyone-lead strong {
   padding: 0 6px;
   border-radius: 6px;
-  background: var(--lime);
+  background: var(--accent);
   color: #111111;
   font-family: var(--display);
   font-size: 0.9em;
@@ -121,7 +121,7 @@
 }
 
 .group-link:hover {
-  background: var(--lime);
+  background: var(--accent);
   color: #111111;
 }
 

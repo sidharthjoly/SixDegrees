@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { JT, STAR_CANDIDATES, dailyPick, dayNumber, dayOfNumber, emojiRow, filterByText, fold, goalFor, grade, isPlayableDay, jtGoal, makeSearch, optimalPath, reachIn, shareText, starOfDay, targetOf, type Goal } from './logic';
+import { JT, STAR_CANDIDATES, bollywoodOfDay, dailyPick, dayNumber, dayOfNumber, emojiRow, filterByText, fold, goalFor, grade, hardRules, isPlayableDay, jtGoal, makeSearch, optimalPath, reachIn, shareText, starDaily, starOfDay, starsOn, targetOf, type Goal } from './logic';
 import type { Film, Loader, Person, Reach, SearchRow } from './types';
 
 const NONE = { dist: Infinity, parentFilm: 0, parentPerson: 0 };
@@ -119,6 +119,12 @@ describe('grading and sharing', () => {
     expect(shareText({ daily: null, mode: 'normal', start: 'X', goal: jtGoal(), moves: [], par: 1, gaveUp: true, url: 'u' })).toMatch(/^Six Degrees of JT\nX → Justin Timberlake\n/);
   });
 
+  it('marks Bollywood hard mode, heading for Shah Rukh Khan', () => {
+    const srk: Goal = { id: 9535, name: 'Shah Rukh Khan', mode: 'bollywood-hard' };
+    const text = shareText({ daily: 3, mode: 'bollywood-hard', start: 'Kajol', goal: srk, moves: [{ grade: 'closer', hinted: false }], par: 1, gaveUp: false, url: 'u' });
+    expect(text).toBe('Six Degrees of Shah Rukh Khan #3 (hard)\nKajol → Shah Rukh Khan\n🟩 1 film (par 1)\nu');
+  });
+
   it('marks hard mode and giving up', () => {
     const text = shareText({ daily: null, mode: 'hard', start: 'X', moves: [{ grade: 'further', hinted: false }], par: 2, gaveUp: true, url: 'u' });
     expect(text).toContain('🟥 gave up after 1 film (par 2)');
@@ -234,32 +240,33 @@ describe('goals', () => {
 });
 
 describe('starOfDay', () => {
+  const ids = (list: number[]) => list.map((id) => ({ id }));
   const days = Array.from({ length: 40 }, (_, i) => dayOfNumber(i + 1));
   const far = async () => 3;
 
   it('gives everyone the same star on a day, whatever order the stars come in, and moves around', async () => {
-    const picks = await Promise.all(days.map((d) => starOfDay([1, 2, 3], d, 99, far)));
-    for (const [i, d] of days.entries()) expect(await starOfDay([3, 1, 2], d, 99, far)).toEqual(picks[i]);
+    const picks = await Promise.all(days.map((d) => starOfDay(ids([1, 2, 3]), d, 99, far)));
+    for (const [i, d] of days.entries()) expect(await starOfDay(ids([3, 1, 2]), d, 99, far)).toEqual(picks[i]);
     expect(new Set(picks.map((p) => p!.id))).toEqual(new Set([1, 2, 3]));
     expect(picks[0]!.par).toBe(3);
   });
 
   it('keeps the day’s star when other stars come and go', async () => {
     for (const d of days) {
-      const { id } = (await starOfDay([1, 2, 3, 4], d, 99, far))!;
+      const { id } = (await starOfDay(ids([1, 2, 3, 4]), d, 99, far))!;
       // A new star takes the day only if it outranks the old one; dropping others never moves it.
-      expect([id, 5, 6]).toContain((await starOfDay([1, 2, 3, 4, 5, 6], d, 99, far))!.id);
-      expect((await starOfDay([id, ...[1, 2, 3, 4].filter((x) => x !== id).slice(2)], d, 99, far))!.id).toBe(id);
+      expect([id, 5, 6]).toContain((await starOfDay(ids([1, 2, 3, 4, 5, 6]), d, 99, far))!.id);
+      expect((await starOfDay(ids([id, ...[1, 2, 3, 4].filter((x) => x !== id).slice(2)]), d, 99, far))!.id).toBe(id);
     }
   });
 
   it('passes over the start, and any star within one film of them or out of reach', async () => {
     const d = days[0];
-    const top = (await starOfDay([1, 2, 3], d, 99, far))!.id;
-    const next = (await starOfDay([1, 2, 3].filter((x) => x !== top), d, 99, far))!.id;
-    expect(await starOfDay([1, 2, 3], d, 99, async (s) => (s === top ? 1 : 2))).toEqual({ id: next, par: 2 });
-    expect(await starOfDay([1, 2, 3], d, 99, async (s) => (s === top ? Infinity : 2))).toEqual({ id: next, par: 2 });
-    expect((await starOfDay([1, 2, 3], d, top, far))!.id).toBe(next);
+    const top = (await starOfDay(ids([1, 2, 3]), d, 99, far))!.id;
+    const next = (await starOfDay(ids([1, 2, 3].filter((x) => x !== top)), d, 99, far))!.id;
+    expect(await starOfDay(ids([1, 2, 3]), d, 99, async (s) => (s === top ? 1 : 2))).toEqual({ id: next, par: 2 });
+    expect(await starOfDay(ids([1, 2, 3]), d, 99, async (s) => (s === top ? Infinity : 2))).toEqual({ id: next, par: 2 });
+    expect((await starOfDay(ids([1, 2, 3]), d, top, far))!.id).toBe(next);
   });
 
   it('looks at no more than a few stars, and has none when none of them will do', async () => {
@@ -268,8 +275,65 @@ describe('starOfDay', () => {
       asked.push(s);
       return 1;
     };
-    expect(await starOfDay([1, 2, 3, 4, 5, 6, 7, 8], days[0], 99, near)).toBeNull();
+    expect(await starOfDay(ids([1, 2, 3, 4, 5, 6, 7, 8]), days[0], 99, near)).toBeNull();
     expect(asked).toHaveLength(STAR_CANDIDATES);
-    expect(await starOfDay([], days[0], 99, far)).toBeNull();
+    expect(await starOfDay(ids([]), days[0], 99, far)).toBeNull();
+  });
+});
+
+describe('stars added later', () => {
+  const days = Array.from({ length: 60 }, (_, i) => dayOfNumber(i + 1));
+  const old = [{ id: 1 }, { id: 2 }, { id: 3 }];
+  const grown = [...old, { id: 4, from: '2026-11-01' }, { id: 5, from: '2026-11-01' }, { id: 6, world: 'bollywood' as const }];
+  const far = async () => 3;
+
+  it('never change a day before their first day, and only then may take one', async () => {
+    let changed = 0;
+    for (const day of days) {
+      const before = await starOfDay(old, day, 99, far);
+      const after = await starOfDay(grown, day, 99, far);
+      if (day < '2026-11-01') expect(after).toEqual(before);
+      else if (after!.id !== before!.id) changed++;
+    }
+    expect(changed).toBeGreaterThan(0);
+  });
+
+  it('leave Bollywood mode’s stars out of the star daily', () => {
+    expect(starsOn(grown, '2026-10-20')).toEqual([1, 2, 3]);
+    expect(starsOn(grown, '2026-11-01')).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+describe('bollywoodOfDay', () => {
+  const file = { goal: 10, starts: [1, 2, 3, 4, 5] };
+  const days = Array.from({ length: 40 }, (_, i) => dayOfNumber(i + 1));
+
+  it('picks one of the starts, heading for Shah Rukh Khan, the same for everyone', () => {
+    const picks = days.map((d) => bollywoodOfDay(file, d)!);
+    for (const { start, goal } of picks) {
+      expect(file.starts).toContain(start);
+      expect(goal).toBe(10);
+    }
+    expect(new Set(picks.map((p) => p.start)).size).toBeGreaterThan(1);
+    expect(bollywoodOfDay({ goal: 10, starts: [5, 3, 1, 4, 2] }, days[0])).toEqual(picks[0]);
+  });
+
+  it('picks apart from the JT daily, though the pools share people', () => {
+    const pool = [1, 2, 3, 4, 5];
+    expect(days.filter((d) => bollywoodOfDay({ goal: 10, starts: pool }, d)!.start === dailyPick(pool, d)).length).toBeLessThan(days.length / 2);
+  });
+
+  it('has none without any starts', () => {
+    expect(bollywoodOfDay({ goal: 10, starts: [] }, days[0])).toBeNull();
+  });
+
+  it('heads for a star like the star daily does, by normal rules or hard', () => {
+    expect(starDaily('bollywood') && starDaily('bollywood-hard') && starDaily('star')).toBe(true);
+    expect(starDaily('normal') || starDaily('hard')).toBe(false);
+    expect(hardRules('hard') && hardRules('bollywood-hard')).toBe(true);
+    expect(hardRules('normal') || hardRules('star') || hardRules('bollywood')).toBe(false);
+    expect(goalFor({ targets: [{ id: 10, name: 'Shah Rukh Khan', film: 'Om Shanti Om', world: 'bollywood' }] }, 10, 'bollywood-hard')).toEqual({ id: 10, name: 'Shah Rukh Khan', mode: 'bollywood-hard' });
+    expect(goalFor({ targets: [{ id: 10, name: 'Shah Rukh Khan', film: 'Om Shanti Om', world: 'bollywood' }] }, 10, 'bollywood')).toEqual({ id: 10, name: 'Shah Rukh Khan', mode: 'bollywood' });
+    expect(goalFor({ targets: [] }, undefined, 'bollywood')).toBeNull();
   });
 });

@@ -1,5 +1,6 @@
 import { DAILY_PAGE_RE, challengeTitle } from '../src/challenge-preview';
 import { handleWrite, type GateEnv } from '../src/gate';
+import { starDaily } from '../src/logic';
 import { STAR_TAG } from '../src/preview-pages';
 import type { Mode } from '../src/types';
 
@@ -14,7 +15,8 @@ import type { Mode } from '../src/types';
  * page whatever the query, so every challenge unfurled as the plain daily. For a valid code
  * this rewrites the page's title tags with the sender's score ("Sid got to JT in 3 films.
  * Can you beat that?") and its URL tags with the full link. The image stays the day's. A star
- * daily's page names its star in a tag ahead of its title, which the title is written from.
+ * or Bollywood daily's page names its star in a tag ahead of its title, which the title is
+ * written from.
  *
  * Anything else passes straight through, and so does any page if this throws: the worst case
  * is the old, generic preview. Rewriting streams the page, well inside the free plan's CPU time.
@@ -43,12 +45,12 @@ export default {
       const vs = url.searchParams.get('vs');
       if (request.method !== 'GET' || !page || !vs || !response.ok || !response.headers.get('content-type')?.startsWith('text/html')) return response;
       const mode = (page[1] as Mode | undefined) ?? 'normal';
-      // The title is worked out when the rewriter first needs it: on a star daily's page, after
-      // the tag naming the star.
+      // The title is worked out when the rewriter first needs it: on a star or Bollywood daily's
+      // page, after the tag naming the star.
       let star: { id: number; name: string } | undefined;
       let title: string | null | undefined;
       const titleNow = () => (title === undefined ? (title = challengeTitle(vs, mode, star)) : title);
-      if (mode !== 'star' && !titleNow()) return response;
+      if (!starDaily(mode) && !titleNow()) return response;
       // The page's own URL tags are https; keep them so whatever scheme the request came in on.
       url.protocol = 'https:';
       // Challengers' names are letters, digits, spaces and ' ’ . - (challenge-code.ts), and the

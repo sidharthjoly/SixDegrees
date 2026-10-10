@@ -5,7 +5,8 @@ import { onLeave } from './shell';
  * - the how-to countdown and the chart appear as they scroll into view;
  * - with a mouse, the hard shadows lean away from the cursor (it's the light), the dot
  *   grid bulges under it as if something were pressing up behind the page, and the daily
- *   sticker (a link) tilts towards it.
+ *   sticker (a link) tilts towards it. In Bollywood mode the dots under it switch on too,
+ *   like fairy lights.
  * Nothing runs under prefers-reduced-motion, and everything is torn down on leaving.
  */
 export function startHomeFx(home: HTMLElement): void {
@@ -101,12 +102,38 @@ const MAX_PUSH_PX = 10;
 const MAX_GROW = 0.6;
 /** t·(1−t²)² peaks at t = 1/√5 with this value; dividing by it makes the peak push MAX_PUSH_PX. */
 const PUSH_PEAK = (1 / Math.sqrt(5)) * (1 - 1 / 5) ** 2;
+/**
+ * The lights: how much of the way a dot switches on in a frame, and off. On is nearly at
+ * once; off takes about half a second, like a filament cooling.
+ */
+const ON_STEP = 0.34;
+const OFF_STEP = 0.03;
+/** Room for a row's columns in a dot's key: far wider than any screen. */
+const ROW_KEY = 4096;
+
+type Rgb = [number, number, number];
+
+function parseHex(color: string): Rgb | null {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color.trim());
+  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+}
+
+/** Each dot's own reach, a little in or out of the bulge's, so the lit patch isn't a perfect circle. */
+function reachOf(key: number): number {
+  let h = Math.imul(key ^ 0x9e3779b9, 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return BULGE_RADIUS * (0.9 + (((h ^ (h >>> 16)) >>> 0) / 4294967296) * 0.12);
+}
 
 /**
  * The page's dot grid redrawn on a canvas, so it can bend: dots near the cursor are pushed
  * outward and grow, like a lens or something pressing up from behind. The push is zero at
  * the centre, strongest a little way out and fades to nothing at the edge, so the grid
  * stays continuous. The bulge trails the cursor slightly and eases flat when it leaves.
+ *
+ * Where the theme gives the dots a lit colour (Bollywood mode's --dot-on-1 to 3, warm
+ * yellows), the cursor also switches on the dots within the bulge's reach: each is off or on,
+ * nothing glows past it, and once the cursor moves on it switches off again, slowly.
  * It only redraws while something is moving or the page scrolls.
  */
 function dotField() {
@@ -122,12 +149,30 @@ function dotField() {
   let width = 0;
   let height = 0;
   let color = '';
+  /** The dots' colour off, and their lit colours, or null without lights. */
+  let lights: { off: Rgb; on: Rgb[] } | null = null;
+  /** How far each lit dot is switched on (0 to 1), by its place in the page's grid (see keyAt). */
+  const lit = new Map<number, number>();
   const bulge = { x: -1e4, y: -1e4, strength: 0 };
   const goal = { x: -1e4, y: -1e4, strength: 0 };
   let frame = 0;
 
   const readColor = () => {
-    color = getComputedStyle(document.documentElement).getPropertyValue('--bg-dot').trim() || '#a29cf7';
+    const css = getComputedStyle(document.documentElement);
+    color = css.getPropertyValue('--bg-dot').trim() || '#a29cf7';
+    const off = parseHex(color);
+    const on = ['--dot-on-1', '--dot-on-2', '--dot-on-3'].map((name) => parseHex(css.getPropertyValue(name)));
+    lights = off && on.every((c) => c) ? { off, on: on as Rgb[] } : null;
+    if (!lights) lit.clear();
+  };
+
+  /** A dot's place in the page's grid: rows count from the top of the page, so they scroll with it. */
+  const keyAt = (row: number, col: number) => row * ROW_KEY + col;
+  const litColor = (key: number, on: number) => {
+    const { off, on: tones } = lights!;
+    const tone = tones[key % tones.length];
+    const mix = (i: number) => Math.round(off[i] + (tone[i] - off[i]) * on);
+    return `rgb(${mix(0)},${mix(1)},${mix(2)})`;
   };
 
   const resize = () => {
@@ -147,7 +192,9 @@ function dotField() {
     // Dots sit at document positions (scroll with the page), so offset by the scroll.
     const offsetY = -(scrollY % GRID);
     const active = bulge.strength > 0.001;
+    const on: [number, number, number, string][] = [];
     for (let y = GRID / 2 + offsetY - GRID; y < height + GRID; y += GRID) {
+      const row = Math.round((y + scrollY - GRID / 2) / GRID);
       for (let x = GRID / 2; x < width + GRID; x += GRID) {
         let px = x;
         let py = y;
@@ -164,11 +211,57 @@ function dotField() {
             r *= 1 + MAX_GROW * (1 - t) ** 2 * bulge.strength;
           }
         }
+        const key = keyAt(row, Math.round((x - GRID / 2) / GRID));
+        const energy = lit.get(key);
+        if (energy) {
+          on.push([px, py, r, litColor(key, energy)]);
+          continue;
+        }
         ctx.moveTo(px + r, py);
         ctx.arc(px, py, r, 0, Math.PI * 2);
       }
     }
     ctx.fill();
+    for (const [px, py, r, fill] of on) {
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  };
+
+  /** Switch the dots within reach of the cursor on, and the rest off; true while any are still changing. */
+  const switchLights = () => {
+    if (!lights) return false;
+    const near = new Set<number>();
+    if (goal.strength > 0) {
+      const top = Math.max(0, Math.floor((goal.y + scrollY - BULGE_RADIUS * 1.05) / GRID));
+      const bottom = Math.ceil((goal.y + scrollY + BULGE_RADIUS * 1.05) / GRID);
+      const left = Math.max(0, Math.floor((goal.x - BULGE_RADIUS * 1.05) / GRID));
+      const right = Math.ceil((goal.x + BULGE_RADIUS * 1.05) / GRID);
+      for (let row = top; row <= bottom; row++) {
+        for (let col = left; col <= right; col++) {
+          const key = keyAt(row, col);
+          const d = Math.hypot(col * GRID + GRID / 2 - goal.x, row * GRID + GRID / 2 - scrollY - goal.y);
+          if (d < reachOf(key)) near.add(key);
+        }
+      }
+    }
+    let changing = false;
+    for (const key of near) {
+      const energy = lit.get(key) ?? 0;
+      if (energy < 1) {
+        lit.set(key, Math.min(1, energy + ON_STEP));
+        changing = true;
+      }
+    }
+    for (const [key, energy] of lit) {
+      if (near.has(key)) continue;
+      changing = true;
+      if (energy <= OFF_STEP) lit.delete(key);
+      else lit.set(key, energy - OFF_STEP);
+    }
+    return changing;
   };
 
   const tick = () => {
@@ -181,9 +274,10 @@ function dotField() {
     bulge.x += (goal.x - bulge.x) * 0.2;
     bulge.y += (goal.y - bulge.y) * 0.2;
     bulge.strength += (goal.strength - bulge.strength) * 0.12;
+    const changing = switchLights();
     draw();
     const settled = Math.abs(goal.x - bulge.x) < 0.3 && Math.abs(goal.y - bulge.y) < 0.3 && Math.abs(goal.strength - bulge.strength) < 0.002;
-    if (!settled) frame = requestAnimationFrame(tick);
+    if (!settled || changing) frame = requestAnimationFrame(tick);
     else if (goal.strength === 0) bulge.strength = 0;
   };
   const schedule = () => {
@@ -191,7 +285,9 @@ function dotField() {
   };
 
   const onScroll = () => {
-    if (!frame) draw();
+    // Scrolling moves other dots under the cursor, so the lights have to be switched again.
+    if (lights && (goal.strength > 0 || lit.size > 0)) schedule();
+    else if (!frame) draw();
   };
   const scheme = matchMedia('(prefers-color-scheme: dark)');
   const onScheme = () => {

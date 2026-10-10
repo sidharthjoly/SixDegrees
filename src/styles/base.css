@@ -2,6 +2,7 @@
  * Y2K countdown look: periwinkle dot grid, black outlines with hard shadows, lime and
  * hot-pink accents. Rubik Mono One is for headings, labels and numbers only; every
  * name and list uses Chakra Petch, which reads at small sizes and in long lists.
+ * Bollywood mode keeps the look in its own colours (below).
  */
 
 :root {
@@ -20,6 +21,16 @@
   --divider: #d9d6ee;
   --lime: #c6ff3d;
   --pink: #ff3d9a;
+  /* The way into Bollywood mode from JT's page, always with dark text, like the lime and pink. */
+  --saffron: #ffb23f;
+  /* Buttons and highlights, and the text on the dark strips (ticker, pills, meters): lime,
+     like JT's own colour, which stays lime in Bollywood mode while these change. */
+  --accent: #c6ff3d;
+  --strip: #111111;
+  --strip-ink: #c6ff3d;
+  /* Bollywood's dailies, in the archive and on the play screen. */
+  --bolly: #ffb23f;
+  --bolly-hard: #ff3d9a;
   --soft: #fff7a8;
   --block: #111111;
   --block-ink: #c6ff3d;
@@ -49,6 +60,63 @@
     --soft: #4a2470;
     --block: #07061a;
     --focus: #c6ff3d;
+  }
+}
+
+/*
+ * Bollywood mode is Marigold: marigold garlands, rani pink and turquoise, with deep maroon at
+ * night. ui/shell.ts sets data-world on the root for it. On the home page its dots light up
+ * warm yellow under the cursor (--dot-on-*, read by ui/homefx.ts).
+ */
+:root[data-world='bollywood'] {
+  --bg: #ffbf57;
+  --bg-dot: #f5a52e;
+  --ink: #2b0a12;
+  --muted: #64260f;
+  --card: #ffffff;
+  --card-ink: #1c0a0d;
+  --card-muted: #6f4b40;
+  --field: #ffffff;
+  --line: #1c0a0d;
+  --shadow: #1c0a0d;
+  --hover: #fff0d6;
+  --divider: #f3dcc8;
+  --pink: #ff3d8b;
+  --soft: #fff1c9;
+  --block: #3a0b1d;
+  --block-ink: #ffbf57;
+  --focus: #1c0a0d;
+  --accent: #2fe3d3;
+  --strip: #3a0b1d;
+  --strip-ink: #ffbf57;
+  --bolly: #ff3d8b;
+  --bolly-hard: #2fe3d3;
+  --dot-on-1: #fffbe6;
+  --dot-on-2: #fff2b8;
+  --dot-on-3: #ffe996;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-world='bollywood'] {
+    --bg: #3a0b1d;
+    --bg-dot: #551331;
+    --ink: #fff0e3;
+    --muted: #f0c2ad;
+    --card: #561735;
+    --card-ink: #fff0e3;
+    --card-muted: #eab9a6;
+    --field: #3a0b1d;
+    --line: #ffbf57;
+    --shadow: #1a030b;
+    --hover: #6b2343;
+    --divider: #7b2b4c;
+    --soft: #5e1a3a;
+    --block: #1a030b;
+    --focus: #ffbf57;
+    --strip: #1a030b;
+    --dot-on-1: #fff0b8;
+    --dot-on-2: #ffd95e;
+    --dot-on-3: #ffc43d;
   }
 }
 
@@ -141,8 +209,8 @@ code {
 
 .ticker {
   overflow: hidden;
-  background: #111111;
-  color: var(--lime);
+  background: var(--strip);
+  color: var(--strip-ink);
   font-family: var(--display);
   font-size: 14px;
   line-height: 1;
@@ -211,7 +279,7 @@ code {
 }
 
 .btn.primary {
-  background: var(--lime);
+  background: var(--accent);
   color: #111111;
   font-family: var(--display);
   font-size: 15px;
@@ -407,7 +475,7 @@ li:last-child > .option {
 }
 
 .chip:hover {
-  background: var(--lime);
+  background: var(--accent);
   color: #111111;
 }
 

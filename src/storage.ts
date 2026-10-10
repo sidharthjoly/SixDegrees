@@ -12,7 +12,7 @@ export interface DailyRecord {
   mode: Mode;
   /** Who was played, so a data rebuild that changes the pick can't pair a new name with an old score. */
   start: Qid;
-  /** The star daily's star, for the same reason. */
+  /** The star or Bollywood daily's star, for the same reason. */
   target?: Qid;
   par: number;
   moves: MoveSummary[];
@@ -39,7 +39,7 @@ function store(): Storage | null {
 
 function isRecord(x: unknown): x is DailyRecord {
   const r = x as DailyRecord;
-  return !!r && r.v === 2 && typeof r.day === 'string' && (r.mode === 'normal' || r.mode === 'hard' || r.mode === 'star') && Array.isArray(r.moves);
+  return !!r && r.v === 2 && typeof r.day === 'string' && ['normal', 'hard', 'star', 'bollywood', 'bollywood-hard'].includes(r.mode) && Array.isArray(r.moves);
 }
 
 export function loadDaily(day: string, mode: Mode): DailyRecord | null {
@@ -83,22 +83,45 @@ export function savePlayerName(name: string): void {
   }
 }
 
-const TARGET_KEY = 'sixdeg:target';
+/** Which films the home page is about: Hollywood's, around JT, or Bollywood's. */
+export type World = 'hollywood' | 'bollywood';
+
+const WORLD_KEY = 'sixdeg:world';
+
+export function loadWorld(): World {
+  try {
+    return store()?.getItem(WORLD_KEY) === 'bollywood' ? 'bollywood' : 'hollywood';
+  } catch {
+    return 'hollywood';
+  }
+}
+
+export function saveWorld(world: World): void {
+  try {
+    if (world === 'bollywood') store()?.setItem(WORLD_KEY, world);
+    else store()?.removeItem(WORLD_KEY);
+  } catch {
+    // Blocked storage: the home page just starts out on Hollywood next time.
+  }
+}
+
+/** Each world remembers its own star, so a Hollywood choice never turns up in Bollywood's menu. */
+const targetKey = (world: World) => (world === 'bollywood' ? 'sixdeg:target:bollywood' : 'sixdeg:target');
 
 /** The other star free play is heading for, or null for JT. Callers check it's still one of the stars. */
-export function loadTarget(): Qid | null {
+export function loadTarget(world: World = 'hollywood'): Qid | null {
   try {
-    const id = Number(store()?.getItem(TARGET_KEY));
+    const id = Number(store()?.getItem(targetKey(world)));
     return Number.isSafeInteger(id) && id > 0 ? id : null;
   } catch {
     return null;
   }
 }
 
-export function saveTarget(id: Qid | null): void {
+export function saveTarget(id: Qid | null, world: World = 'hollywood'): void {
   try {
-    if (id) store()?.setItem(TARGET_KEY, String(id));
-    else store()?.removeItem(TARGET_KEY);
+    if (id) store()?.setItem(targetKey(world), String(id));
+    else store()?.removeItem(targetKey(world));
   } catch {
     // Blocked storage: free play just starts out heading for JT next time.
   }

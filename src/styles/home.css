@@ -125,6 +125,31 @@
   letter-spacing: 0.12em;
 }
 
+/* Bollywood mode: the daily's sticker in its own colour, and the switch between the two worlds. */
+.sticker.bollywood::before {
+  background: var(--bolly);
+}
+
+/* Each in the colour of the mode it leads to. */
+.world-switch {
+  margin: 0 0 14px;
+}
+
+.world-switch.to-bollywood {
+  background: var(--saffron);
+  color: #111111;
+}
+
+.world-switch.to-hollywood {
+  background: var(--lime);
+  color: #111111;
+}
+
+.heading-for {
+  margin: 0 0 14px;
+  font-size: 17px;
+}
+
 /* ------------------------------------------------------------ free play's star switch */
 
 .goal-switch {
@@ -245,7 +270,7 @@
 }
 
 .menu-option[aria-selected='true'] {
-  background: var(--lime);
+  background: var(--accent);
   color: #111111;
 }
 
@@ -285,7 +310,7 @@
 
 .col:hover .bar-fill,
 .col:focus-visible .bar-fill {
-  background: var(--lime);
+  background: var(--accent);
 }
 
 .cap {

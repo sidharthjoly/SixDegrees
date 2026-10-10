@@ -49,7 +49,7 @@ export async function renderStats(gen: number): Promise<void> {
     links,
   );
 
-  if (stats.normal.played + stats.hard.played + stats.star.played === 0) {
+  if (stats.normal.played + stats.hard.played + stats.star.played + stats.bollywood.played + stats['bollywood-hard'].played === 0) {
     app.replaceChildren(
       topBar(),
       head,
@@ -64,7 +64,7 @@ export async function renderStats(gen: number): Promise<void> {
     return;
   }
 
-  const { normal, hard, star, streak } = stats;
+  const { normal, hard, star, bollywood, streak } = stats;
   const playedToday = streakDays(records.filter((r) => isUsable(r, today))).has(today);
   app.replaceChildren(
     topBar(),
@@ -85,13 +85,15 @@ export async function renderStats(gen: number): Promise<void> {
         },
         { value: String(streak.best), label: 'Best streak', detail: streak.best === 1 ? 'day' : 'days' },
       ]),
-      h('p', { class: 'muted stats-note' }, 'A streak is consecutive days with that day’s daily finished on the day without giving up, the JT one or the star daily. Past dailies played late don’t count.'),
+      h('p', { class: 'muted stats-note' }, 'A streak is consecutive days with that day’s daily finished on the day without giving up: the JT one, the star daily or the Bollywood daily. Past dailies played late don’t count.'),
     ),
     normal.played > 0
       ? scoreChart(normal, 'Your scores', 'How your dailies charted against par')
       : h('section', { class: 'card' }, h('h2', null, 'Your scores'), h('p', null, 'No normal-mode dailies yet.')),
     sideSection('hard', hard, today),
     sideSection('star', star, today),
+    sideSection('bollywood', bollywood, today),
+    sideSection('bollywood-hard', stats['bollywood-hard'], today),
   );
 }
 
@@ -182,6 +184,22 @@ const SIDE = {
     link: 'Try today’s',
     chartTitle: 'Star daily scores',
     chartAbout: 'How your star dailies charted against par',
+  },
+  bollywood: {
+    title: 'Bollywood dailies',
+    about: 'Bollywood mode’s daily, from a Bollywood star to Shah Rukh Khan. Kept apart from your daily stats, but it keeps your streak going.',
+    none: 'No Bollywood dailies yet. ',
+    link: 'Try today’s',
+    chartTitle: 'Bollywood daily scores',
+    chartAbout: 'How your Bollywood dailies charted against par',
+  },
+  'bollywood-hard': {
+    title: 'Bollywood hard mode',
+    about: 'No hints, and Shah Rukh Khan’s five best-known films are banned. Kept apart from your daily stats.',
+    none: 'No Bollywood dailies in hard mode yet. ',
+    link: 'Try today’s',
+    chartTitle: 'Bollywood hard-mode scores',
+    chartAbout: 'How your Bollywood dailies in hard mode charted against par',
   },
 } as const;
 

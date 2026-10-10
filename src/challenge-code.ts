@@ -21,8 +21,9 @@ import type { Mode, Qid } from './types';
  *   2.8bl.22191.nf.csCc.….U2Ft.k3q
  *         └ the star, base36 (here Kevin Bacon)
  *
- * JT's games stay format 1, so links from older copies of the game keep working. Hard mode is
- * his alone, so format 2 is always "n".
+ * JT's games stay format 1, so links from older copies of the game keep working. Format 2 is
+ * "h" only for Bollywood hard mode, towards Shah Rukh Khan: the game playing a code checks it's
+ * for the puzzle on screen, rules and star included (challenge.ts).
  *
  * Every character is URL-safe, so the link needs no percent-escapes. The checksum keeps the
  * code ending in a letter or digit: chat apps drop a trailing "." from a link, and an empty
@@ -125,7 +126,6 @@ export function encodeChallenge(c: Challenge): string | null {
   if (c.moves.length > MAX_MOVES) return null;
   const name = c.name ? cleanName(c.name) : '';
   const other = c.target !== undefined && c.target !== JT;
-  if (other && c.mode === 'hard') return null;
   const head = [
     ...(other ? [TARGET_VERSION, qidOut(c.start), qidOut(c.target!)] : [VERSION, qidOut(c.start)]),
     (c.mode === 'hard' ? 'h' : 'n') + (c.gaveUp ? 'g' : 'f'),
@@ -157,8 +157,7 @@ export function decodeChallenge(code: string): Challenge | null {
   // A star's code never names JT: his games are format 1, so each game has one spelling.
   if (start === null || target === null || start === target || (other && target === JT)) return null;
   const flag = /^([nh])([fg])$/.exec(flags);
-  // Hard mode is JT's alone.
-  if (!flag || (other && flag[1] === 'h')) return null;
+  if (!flag) return null;
   const mode: Mode = flag[1] === 'h' ? 'hard' : 'normal';
   const gaveUp = flag[2] === 'g';
 

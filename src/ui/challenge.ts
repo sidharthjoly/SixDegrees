@@ -1,6 +1,6 @@
 import { MAX_NAME_LENGTH, cleanName, compareResults, decodeChallenge, encodeChallenge, sideOf, type Challenge, type Reason, type Side } from '../challenge-code';
 import { getPerson } from '../data';
-import { JT, dayNumber, plural, shareText, targetOf, type Goal, type MoveSummary } from '../logic';
+import { JT, dayNumber, hardRules, plural, shareText, targetOf, type Goal, type MoveSummary } from '../logic';
 import { loadPlayerName, savePlayerName } from '../storage';
 import type { Mode, Person, Qid } from '../types';
 import { h } from './dom';
@@ -19,10 +19,11 @@ import { tracks, type ChainStep } from './tracks';
 type Parsed = { kind: 'none' } | { kind: 'broken' } | { kind: 'elsewhere' } | { kind: 'ok'; challenge: Challenge };
 
 /**
- * A code's rules: hard or normal. The star daily plays by normal rules, so its codes are the
- * same as free play's from that start to that star: the same puzzle, either way.
+ * A code's rules: hard or normal. The star daily and the Bollywood daily play by normal rules,
+ * so their codes are the same as free play's from that start to that star: the same puzzle,
+ * either way. Bollywood hard mode's are hard, towards Shah Rukh Khan.
  */
-const rules = (mode: Mode): Mode => (mode === 'hard' ? 'hard' : 'normal');
+export const rules = (mode: Mode): Mode => (hardRules(mode) ? 'hard' : 'normal');
 
 /** The code from the link, checked against the puzzle actually being played. */
 function parse(vs: string | null, start: Qid, mode: Mode, goal: Goal): Parsed {

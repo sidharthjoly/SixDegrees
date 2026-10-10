@@ -3,7 +3,8 @@
  * everything after the #, so a shared #/daily/<date> link would only ever unfurl as the
  * home page. The build (scripts/previews.ts) writes d/<date>/index.html for each daily: the
  * game's page with that day's Open Graph tags, which starts the game in place. Hard mode's
- * page is d/<date>/hard/, the star daily's d/<date>/star/.
+ * page is d/<date>/hard/, the star daily's d/<date>/star/, the Bollywood daily's
+ * d/<date>/bollywood/ and its hard mode's d/<date>/bollywood-hard/.
  *
  * Pure string building with no imports, so Node can load it by type stripping and vitest can
  * test it without data.
@@ -12,7 +13,7 @@
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 86_400_000;
 
-export type PreviewMode = 'normal' | 'hard' | 'star';
+export type PreviewMode = 'normal' | 'hard' | 'star' | 'bollywood' | 'bollywood-hard';
 
 /** SITE_URL with exactly one trailing slash, so paths can be appended. Rejects anything but http(s). */
 export function normalizeSite(raw: string): string {
@@ -59,9 +60,11 @@ export function pagePath(day: string, mode: PreviewMode): string {
 
 /**
  * A day's preview image. The JT daily's is shared by both its modes: it shows the day's start,
- * not the par. The star daily's names its star instead of JT.
+ * not the par. The star and Bollywood dailies' name their star instead of JT, and the
+ * Bollywood daily's is shared by both its modes too.
  */
-export const imagePath = (day: string, mode: PreviewMode = 'normal') => `og/${day}${mode === 'star' ? '-star' : ''}.png`;
+export const imagePath = (day: string, mode: PreviewMode = 'normal') =>
+  `og/${day}${mode === 'star' ? '-star' : mode === 'bollywood' || mode === 'bollywood-hard' ? '-bollywood' : ''}.png`;
 
 /** "../../" from d/<date>/, "../../../" from d/<date>/hard/: relative, so any base path works. */
 export function rootPrefix(path: string): string {
@@ -88,7 +91,7 @@ export const IMAGE_WIDTH = 1200;
 export const IMAGE_HEIGHT = 630;
 
 export function dailyTitle(p: Pick<DailyPage, 'number' | 'mode' | 'star'>): string {
-  return `Six Degrees of ${p.star?.name ?? 'JT'} #${p.number}` + (p.mode === 'hard' ? ' (hard)' : '');
+  return `Six Degrees of ${p.star?.name ?? 'JT'} #${p.number}` + (p.mode === 'hard' || p.mode === 'bollywood-hard' ? ' (hard)' : '');
 }
 
 export function dailyDescription(p: Pick<DailyPage, 'name' | 'par' | 'star'>): string {
@@ -155,8 +158,8 @@ ${TAGS_END}`;
   return page.replace('<head>', `<head>\n    ${head}`);
 }
 
-/** A daily page's URL path: [1] the site root, [2] the date, [3] "/hard" for hard mode or "/star" for the star daily. */
-export const DAILY_PATH_RE = /^(.*?\/)d\/(\d{4}-\d{2}-\d{2})(\/hard|\/star)?\/?$/;
+/** A daily page's URL path: [1] the site root, [2] the date, [3] "/hard", "/star" or "/bollywood" for the other dailies. */
+export const DAILY_PATH_RE = /^(.*?\/)d\/(\d{4}-\d{2}-\d{2})(\/hard|\/star|\/bollywood-hard|\/bollywood)?\/?$/;
 
 /*
  * GitHub Pages serves 404.html for any missing path. A daily link newer than the last

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { listDailies, loadDaily, migrateV1, saveDaily, type DailyRecord } from './storage';
+import { listDailies, loadDaily, loadTarget, loadWorld, migrateV1, saveDaily, saveTarget, saveWorld, type DailyRecord } from './storage';
 
 class MemoryStorage {
   private data = new Map<string, string>();
@@ -63,6 +63,27 @@ describe('daily records', () => {
     expect(loadDaily('2026-10-08', 'star')?.moves).toHaveLength(1);
     saveDaily(rec({ mode: 'star', target: 2263, par: 3 }));
     expect(loadDaily('2026-10-08', 'star')).toMatchObject({ target: 2263, par: 3 });
+  });
+
+  it('keeps the Bollywood daily apart from the others', () => {
+    saveDaily(rec({ mode: 'star', target: 873, par: 2 }));
+    saveDaily(rec({ mode: 'bollywood', start: 99, target: 9535, par: 2 }));
+    saveDaily(rec({ mode: 'bollywood-hard', start: 99, target: 9535, par: 3 }));
+    expect(loadDaily('2026-10-08', 'bollywood')).toMatchObject({ start: 99, target: 9535, par: 2 });
+    expect(loadDaily('2026-10-08', 'bollywood-hard')).toMatchObject({ start: 99, target: 9535, par: 3 });
+    expect(loadDaily('2026-10-08', 'star')).toMatchObject({ target: 873 });
+  });
+
+  it('remembers the world, and each world’s own star', () => {
+    expect(loadWorld()).toBe('hollywood');
+    saveWorld('bollywood');
+    expect(loadWorld()).toBe('bollywood');
+    saveTarget(873);
+    saveTarget(9535, 'bollywood');
+    expect(loadTarget()).toBe(873);
+    expect(loadTarget('bollywood')).toBe(9535);
+    saveWorld('hollywood');
+    expect(loadWorld()).toBe('hollywood');
   });
 
   it('replaces a record for a different start (the day was re-picked by a data rebuild)', () => {

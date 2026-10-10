@@ -1,11 +1,13 @@
 export type Qid = number;
 
 /**
- * Normal play; hard mode, where JT's best-known films are banned and there are no hints; or
- * the star daily, the day's start heading for one of the other stars instead of JT (normal
- * rules). Free play towards another star is normal mode with a target.
+ * Normal play; hard mode, where JT's best-known films are banned and there are no hints; the
+ * star daily, the day's start heading for one of the other stars instead of JT; or Bollywood
+ * mode's daily, from a Bollywood star to Shah Rukh Khan, and its hard mode, where his
+ * best-known films are banned. The star daily and the Bollywood daily play by normal rules.
+ * Free play towards another star is normal mode with a target.
  */
-export type Mode = 'normal' | 'hard' | 'star';
+export type Mode = 'normal' | 'hard' | 'star' | 'bollywood' | 'bollywood-hard';
 
 /** Wire formats written by scripts/build_graph.py. */
 export type PersonRow = [
@@ -20,7 +22,7 @@ export type PersonRow = [
   hardParentPerson: Qid,
 ];
 export type FilmRow = [title: string, year: number | null, fame: number, cast: [Qid, string, number][]];
-/** One person's first step towards one of the other stars (t/<star>/NN.json). */
+/** One person's first step towards one of the other stars (t/<star>/NN.json, or t/<star>-hard/ for Bollywood hard mode). */
 export type TargetRow = [dist: number, parentFilm: Qid, parentPerson: Qid];
 /** Autocomplete entry: qid, name, sitelinks, Timberlake number, best-known film, hard-mode number, nicknames. */
 export type SearchRow = [Qid, string, number, number, string, number, string[]?];
@@ -48,6 +50,25 @@ export interface Target {
   name: string;
   /** Their best-known film. */
   film: string;
+  /** The first day the star daily may pick them (YYYY-MM-DD); always, when left out. */
+  from?: string;
+  /** Bollywood mode's stars; the others are free play's and the star daily's. */
+  world?: 'bollywood';
+}
+
+/** bollywood.json: Bollywood mode's daily and suggestions (see scripts/build_graph.py). */
+export interface BollywoodFile {
+  /** Who Bollywood mode heads for: Shah Rukh Khan. */
+  goal: Qid;
+  /** The Bollywood daily's starts: Bollywood stars at least two films from the goal. */
+  starts: Qid[];
+  /** Films excluded in Bollywood hard mode: the goal's best known. */
+  hardBanned: FilmRef[];
+  /** The best-known Bollywood names, for suggestions. */
+  picks: [Qid, string][];
+  /** How many Bollywood stars and Hindi films there are. */
+  stars: number;
+  films: number;
 }
 
 export interface FilmRef {
@@ -91,6 +112,6 @@ export interface Film extends FilmRef {
 export interface Loader {
   person(id: Qid): Promise<Person>;
   film(id: Qid): Promise<Film>;
-  /** How far `id` is from one of meta.json's other stars. */
-  reach(target: Qid, id: Qid): Promise<Reach>;
+  /** How far `id` is from one of meta.json's other stars; with `hard`, without the films Bollywood hard mode bans. */
+  reach(target: Qid, id: Qid, hard?: boolean): Promise<Reach>;
 }

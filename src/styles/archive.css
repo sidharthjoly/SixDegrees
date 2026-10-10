@@ -38,8 +38,8 @@
 .arc-today {
   padding: 3px 10px;
   border-radius: 999px;
-  background: #111111;
-  color: var(--lime);
+  background: var(--strip);
+  color: var(--strip-ink);
   font-family: var(--display);
   font-size: 11px;
   text-transform: uppercase;
@@ -95,8 +95,8 @@ a.arc-mode:active {
   min-width: 5.8em;
   padding: 3px 8px;
   border-radius: 999px;
-  background: #111111;
-  color: var(--lime);
+  background: var(--strip);
+  color: var(--strip-ink);
   font-family: var(--display);
   font-size: 11px;
   text-align: center;
@@ -112,6 +112,16 @@ a.arc-mode:active {
 /* The star daily's chip is lime, like its pill on the play screen. */
 .arc-mode.star .arc-mode-name {
   background: var(--lime);
+  color: #111111;
+}
+
+.arc-mode.bollywood .arc-mode-name {
+  background: var(--bolly);
+  color: #111111;
+}
+
+.arc-mode.bollywood-hard .arc-mode-name {
+  background: var(--bolly-hard);
   color: #111111;
 }
 

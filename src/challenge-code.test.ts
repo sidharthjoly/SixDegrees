@@ -65,8 +65,9 @@ describe('challenge codes', () => {
     expect(encodeChallenge(finished)).toMatch(/^1\./);
   });
 
-  it('refuse hard mode towards another star', () => {
-    expect(encodeChallenge({ ...toStar, mode: 'hard', moves: toStar.moves.map((x) => ({ ...x, hinted: false })) })).toBeNull();
+  it('hard mode towards another star (Bollywood hard mode)', () => {
+    const hard = { ...toStar, mode: 'hard' as const, moves: toStar.moves.map((x) => ({ ...x, hinted: false })) };
+    expect(decodeChallenge(encodeChallenge(hard)!)).toEqual(hard);
   });
 
   it('survive the router', () => {
@@ -224,9 +225,9 @@ describe('decodeChallenge rejects, in format 2', () => {
     for (const bad of [JT.toString(36), toStar.start.toString(36), '', '0', 'A1']) expect(decodeChallenge(edit(2, bad))).toBeNull();
   });
 
-  it('hard mode, which is JT’s alone', () => {
-    const hard = fields.map((f, i) => (i === 3 ? 'hf' : i === 4 ? f.toLowerCase() : f));
-    expect(decodeChallenge(sign(hard))).toBeNull();
+  it('hints in hard mode, towards a star as towards JT', () => {
+    expect(decodeChallenge(sign(fields.map((f, i) => (i === 3 ? 'hf' : i === 4 ? f.toLowerCase() : f))))).not.toBeNull();
+    expect(decodeChallenge(sign(fields.map((f, i) => (i === 3 ? 'hf' : i === 4 ? f.toUpperCase() : f))))).toBeNull();
   });
 
   it('a finished path that doesn’t end on the star, or passes through them', () => {

@@ -34,8 +34,10 @@ revoke all on schema sixdegrees from public;
 create table if not exists sixdegrees.results (
   client uuid not null,
   day date not null,
-  -- The star daily is the day's start heading for one of the other stars instead of JT.
-  mode text not null check (mode in ('normal', 'hard', 'star')),
+  -- The star daily is the day's start heading for one of the other stars instead of JT; the
+  -- Bollywood daily is Bollywood mode's, from a Bollywood star to Shah Rukh Khan, and
+  -- bollywood-hard its hard mode.
+  mode text not null check (mode in ('normal', 'hard', 'star', 'bollywood', 'bollywood-hard')),
   -- Films played; giving up straight away is 0.
   films smallint not null check (films between 0 and 200),
   hints smallint not null default 0 check (hints >= 0 and hints <= films),
@@ -63,8 +65,8 @@ alter table sixdegrees.results drop constraint if exists results_route_check;
 alter table sixdegrees.results add constraint results_route_check
   check (length(route) <= 200 and route ~ '^[0-9a-z]+-[0-9a-z]+(_[0-9a-z]+-[0-9a-z]+)*$');
 
--- The star daily came after the table, so a rerun swaps whatever mode check the table has
--- (found by what it checks, not by name) for the one above.
+-- The star and Bollywood dailies came after the table, so a rerun swaps whatever mode check
+-- the table has (found by what it checks, not by name) for the one above.
 do $$
 declare
   c record;
@@ -76,7 +78,7 @@ begin
     execute format('alter table sixdegrees.results drop constraint %I', c.conname);
   end loop;
 end $$;
-alter table sixdegrees.results add constraint results_mode_check check (mode in ('normal', 'hard', 'star'));
+alter table sixdegrees.results add constraint results_mode_check check (mode in ('normal', 'hard', 'star', 'bollywood', 'bollywood-hard'));
 
 -- A day's global stats, kept once its results have gone (sixdegrees.tidy), so past dailies
 -- still show how everyone did.
@@ -451,9 +453,9 @@ begin
   return jsonb_build_object('late', (select r.late from sixdegrees.results r where r.client = p_client and r.day = p_day and r.mode = p_mode));
 end $$;
 
--- A hint in a daily (normal, or the star daily): records that the player asked at `p_person`
+-- A hint in a daily (normal, the star daily or the Bollywood daily): records that the player asked at `p_person`
 -- (once per place), so their result counts it whatever the game reports. The Worker answers
--- with the hint itself, from the game's data, only once this has gone through. Hard mode has
+-- with the hint itself, from the game's data, only once this has gone through. Hard modes have
 -- no hints.
 create or replace function public.sixdegrees_hint(p_client uuid, p_day date, p_mode text, p_person int, p_source text, p_wide text)
 returns void
@@ -461,7 +463,7 @@ language plpgsql security definer set search_path = '' as $$
 declare
   today date := (now() at time zone 'utc')::date;
 begin
-  if p_mode is null or p_mode not in ('normal', 'star') then
+  if p_mode is null or p_mode not in ('normal', 'star', 'bollywood') then
     raise exception 'Hard mode has no hints' using errcode = '22023';
   end if;
   if p_day < sixdegrees.first_day() or p_day > today + 1 then
@@ -597,8 +599,8 @@ end $$;
 
 -- A group's board: each member's result for `p_day` in each mode, and their week (the seven
 -- days to `p_day`). A week's points per day: 3 for par, 2 for one over, 1 for two over, none
--- otherwise, from the JT daily or the star daily, whichever went better, so playing both
--- never counts twice. Hard mode is extra. Anyone with the code can look; `member` says whether p_client is in,
+-- otherwise, from the JT daily, the star daily or the Bollywood daily, whichever went best, so
+-- playing more than one never counts twice. Hard modes are extra. Anyone with the code can look; `member` says whether p_client is in,
 -- and `owner` whether they started it. Each member's `id` is only for removing them.
 create or replace function public.sixdegrees_group(p_code text, p_client uuid, p_day date)
 returns jsonb
@@ -625,9 +627,13 @@ language sql stable security definer set search_path = '' as $$
                  from res where res.client = m.client and res.day = p_day and res.mode = 'hard'),
         'star', (select jsonb_build_object('films', films, 'hints', hints, 'par', par, 'gaveUp', gave_up)
                  from res where res.client = m.client and res.day = p_day and res.mode = 'star'),
+        'bollywood', (select jsonb_build_object('films', films, 'hints', hints, 'par', par, 'gaveUp', gave_up)
+                      from res where res.client = m.client and res.day = p_day and res.mode = 'bollywood'),
+        'bollywood-hard', (select jsonb_build_object('films', films, 'hints', hints, 'par', par, 'gaveUp', gave_up)
+                           from res where res.client = m.client and res.day = p_day and res.mode = 'bollywood-hard'),
         'week', (select jsonb_build_object('played', count(*), 'points', coalesce(sum(d.points), 0))
                  from (select max(case when gave_up then 0 else greatest(0, 3 - (films - par)) end) as points
-                       from res where res.client = m.client and res.mode in ('normal', 'star')
+                       from res where res.client = m.client and res.mode in ('normal', 'star', 'bollywood')
                        group by res.day) d)
       ) order by m.joined_at), '[]'::jsonb)
       from m

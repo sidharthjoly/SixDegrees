@@ -1,6 +1,6 @@
-import { dailyStar, getPerson, loadMeta } from '../data';
+import { dailyBollywood, dailyStar, getPerson, loadMeta } from '../data';
 import { archiveDays, formatDay } from '../days';
-import { dailyPick, dayKey, dayNumber, plural } from '../logic';
+import { bollywoodDaily, dailyPick, dayKey, dayNumber, plural } from '../logic';
 import { href } from '../router';
 import { isUsable } from '../scores';
 import { loadDaily, type DailyRecord } from '../storage';
@@ -10,9 +10,9 @@ import { app, isCurrent, renderLoading, renderMessage, topBar } from './shell';
 import { describeMoves, gradeSquares } from './squares';
 
 /**
- * Past dailies, newest first, each linking to its normal, hard and star game. Who each day
- * starts from costs a person-shard fetch (and its star another), so names load only for rows
- * near the viewport, a few fetches at a time.
+ * Past dailies, newest first, each linking to its normal, hard, star and Bollywood game. Who
+ * each day starts from costs a person-shard fetch (and its stars more), so names load only for
+ * rows near the viewport, a few fetches at a time.
  */
 
 /** Person fetches in flight at once: enough to fill a screen quickly without a request storm. */
@@ -55,6 +55,8 @@ interface Row {
   who: HTMLElement;
   hard: HTMLElement;
   star: HTMLElement;
+  bollywood: HTMLElement;
+  bollywoodHard: HTMLElement;
 }
 
 function row(day: string, today: string, pick: (day: string) => Qid): Row {
@@ -62,8 +64,11 @@ function row(day: string, today: string, pick: (day: string) => Qid): Row {
   const isToday = day === today;
   const who = h('p', { class: 'arc-who muted' }, 'Loading…');
   const hard = modeLink(day, 'hard', played(day, 'hard', today, pick), n);
-  // Whether a star daily's record is for the day's star is only known once the star loads.
+  // Whether a star or Bollywood daily's record is for the day's puzzle is only known once
+  // that loads (see lazyLoad).
   const star = modeLink(day, 'star', played(day, 'star', today, pick), n);
+  const bollywood = modeLink(day, 'bollywood', played(day, 'bollywood', today, pick), n);
+  const bollywoodHard = modeLink(day, 'bollywood-hard', played(day, 'bollywood-hard', today, pick), n);
   const el = h(
     'li',
     { class: 'card arc-row' + (isToday ? ' today' : '') },
@@ -75,19 +80,22 @@ function row(day: string, today: string, pick: (day: string) => Qid): Row {
       isToday && h('span', { class: 'arc-today' }, 'Today'),
     ),
     who,
-    h('div', { class: 'arc-modes' }, modeLink(day, 'normal', played(day, 'normal', today, pick), n), hard, star),
+    h('div', { class: 'arc-modes' }, modeLink(day, 'normal', played(day, 'normal', today, pick), n), hard, star, bollywood, bollywoodHard),
   );
-  return { day, el, who, hard, star };
+  return { day, el, who, hard, star, bollywood, bollywoodHard };
 }
 
 /** The saved finish for that day and mode, if it was for the start that day has now. */
 function played(day: string, mode: Mode, today: string, pick: (day: string) => Qid): DailyRecord | null {
   const rec = loadDaily(day, mode);
+  if (!rec || !isUsable(rec, today)) return null;
+  // The Bollywood daily has its own start, checked once it loads.
+  if (bollywoodDaily(mode)) return rec;
   // Picking is a hash over the whole pool, so only pay for it when there's a record to check.
-  return rec && isUsable(rec, today) && rec.start === pick(day) ? rec : null;
+  return rec.start === pick(day) ? rec : null;
 }
 
-const MODE_NAME: Record<Mode, string> = { normal: 'Normal', hard: 'Hard', star: 'Star' };
+const MODE_NAME: Record<Mode, string> = { normal: 'Normal', hard: 'Hard', star: 'Star', bollywood: 'Bollywood', 'bollywood-hard': 'Bollywood hard' };
 
 function modeLink(day: string, mode: Mode, rec: DailyRecord | null, n: number): HTMLElement {
   const modeName = MODE_NAME[mode];
@@ -118,6 +126,8 @@ function modeLink(day: string, mode: Mode, rec: DailyRecord | null, n: number): 
   );
 }
 
+const nameOf = async (id: Qid) => (await getPerson(id)).name;
+
 /** Fill in each row's start person when it comes near the viewport. */
 function lazyLoad(rows: Row[], gen: number, pick: (day: string) => Qid): void {
   const queue: Row[] = [];
@@ -126,7 +136,14 @@ function lazyLoad(rows: Row[], gen: number, pick: (day: string) => Qid): void {
   const off = (name: string, why: string) => h('span', { class: 'arc-mode off' }, h('span', { class: 'arc-mode-name' }, name), h('span', { class: 'arc-detail' }, why));
   const load = async (r: Row) => {
     try {
-      const [person, star] = await Promise.all([getPerson(pick(r.day)), dailyStar(r.day)]);
+      // The Bollywood daily is extra here: a day without its file still shows the rest.
+      const [person, star, bolly, bollyHard] = await Promise.all([
+        getPerson(pick(r.day)),
+        dailyStar(r.day),
+        dailyBollywood(r.day).catch(() => null),
+        dailyBollywood(r.day, true).catch(() => null),
+      ]);
+      const bollyStart = bolly && (await nameOf(bolly.start));
       if (!isCurrent(gen)) return;
       r.who.classList.remove('muted');
       const hardPar = person.hard.dist;
@@ -134,6 +151,7 @@ function lazyLoad(rows: Row[], gen: number, pick: (day: string) => Qid): void {
         h('span', { class: 'arc-name' }, person.name),
         h('span', { class: 'arc-par' }, ` · par ${person.normal.dist}`, hardPar === Infinity ? '' : `, hard ${hardPar}`),
         ...(star ? [h('span', { class: 'arc-par' }, ` · star: ${star.star.name}, par ${star.par}`)] : []),
+        ...(bolly ? [h('span', { class: 'arc-par' }, ` · Bollywood: ${bollyStart}, par ${bolly.par}`, bollyHard ? `, hard ${bollyHard.par}` : '')] : []),
       );
       // Some starts only reach Justin through films hard mode bans.
       if (hardPar === Infinity) r.hard.replaceWith(off('Hard', 'No hard-mode path'));
@@ -141,6 +159,12 @@ function lazyLoad(rows: Row[], gen: number, pick: (day: string) => Qid): void {
       else if (r.star.classList.contains('done') && loadDaily(r.day, 'star')?.target !== star.star.id) {
         // Finished for a star the day no longer has (the data was rebuilt): it's unplayed now.
         r.star.replaceWith(modeLink(r.day, 'star', null, dayNumber(r.day)));
+      }
+      // Finished for a start the day no longer has (the data was rebuilt): unplayed now, as above.
+      for (const [mode, el, daily] of [['bollywood', r.bollywood, bolly], ['bollywood-hard', r.bollywoodHard, bollyHard]] as const) {
+        const rec = loadDaily(r.day, mode);
+        if (!daily) el.replaceWith(off(MODE_NAME[mode], 'No Bollywood daily'));
+        else if (el.classList.contains('done') && (rec?.start !== daily.start || rec.target !== daily.star.id)) el.replaceWith(modeLink(r.day, mode, null, dayNumber(r.day)));
       }
     } catch {
       if (isCurrent(gen)) r.who.textContent = 'Couldn’t load who this day starts from.';

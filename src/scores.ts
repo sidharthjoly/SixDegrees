@@ -1,5 +1,5 @@
 import { addDays, isDayKey } from './days';
-import type { Grade } from './logic';
+import { hardRules, type Grade } from './logic';
 import type { DailyRecord } from './storage';
 import type { Mode } from './types';
 
@@ -31,6 +31,8 @@ export interface Stats {
   normal: ModeStats;
   hard: ModeStats;
   star: ModeStats;
+  bollywood: ModeStats;
+  'bollywood-hard': ModeStats;
   streak: Streaks;
 }
 
@@ -45,7 +47,7 @@ export function isUsable(r: DailyRecord, today: string): boolean {
   return (
     isDayKey(r.day) &&
     r.day <= today &&
-    (r.mode === 'normal' || r.mode === 'hard' || r.mode === 'star') &&
+    ['normal', 'hard', 'star', 'bollywood', 'bollywood-hard'].includes(r.mode) &&
     Number.isInteger(r.par) &&
     r.par >= 1 &&
     typeof r.gaveUp === 'boolean' &&
@@ -72,12 +74,13 @@ export function modeStats(records: DailyRecord[], mode: Mode): ModeStats {
 }
 
 /**
- * Days that keep a streak alive: the daily finished on its own day without giving up, the JT
- * one or the star daily (for anyone who'd rather not end up at JT). Hard mode is extra.
+ * Days that keep a streak alive: a daily finished on its own day without giving up, the JT one,
+ * the star daily (for anyone who'd rather not end up at JT) or the Bollywood daily. Hard modes
+ * are extra.
  */
 export function streakDays(records: DailyRecord[]): Set<string> {
   // `late !== false` rather than `late`: a record missing the flag can't prove it was on time.
-  return new Set(records.filter((r) => (r.mode === 'normal' || r.mode === 'star') && r.late === false && !r.gaveUp).map((r) => r.day));
+  return new Set(records.filter((r) => !hardRules(r.mode) && r.late === false && !r.gaveUp).map((r) => r.day));
 }
 
 export function streaks(days: Set<string>, today: string): Streaks {
@@ -101,7 +104,14 @@ export function streaks(days: Set<string>, today: string): Streaks {
 
 export function computeStats(all: DailyRecord[], today: string): Stats {
   const records = all.filter((r) => isUsable(r, today));
-  return { normal: modeStats(records, 'normal'), hard: modeStats(records, 'hard'), star: modeStats(records, 'star'), streak: streaks(streakDays(records), today) };
+  return {
+    normal: modeStats(records, 'normal'),
+    hard: modeStats(records, 'hard'),
+    star: modeStats(records, 'star'),
+    bollywood: modeStats(records, 'bollywood'),
+    'bollywood-hard': modeStats(records, 'bollywood-hard'),
+    streak: streaks(streakDays(records), today),
+  };
 }
 
 /** Whole-number percentage, or null when there's nothing to divide by. */

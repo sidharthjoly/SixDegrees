@@ -9,6 +9,9 @@ describe('parseRoute', () => {
     expect(parseRoute('#/daily/2026-10-08')).toEqual({ name: 'daily', day: '2026-10-08', mode: 'normal', vs: null });
     expect(parseRoute('#/daily/2026-10-08/hard?vs=abc')).toEqual({ name: 'daily', day: '2026-10-08', mode: 'hard', vs: 'abc' });
     expect(parseRoute('#/daily/2026-10-08/star')).toEqual({ name: 'daily', day: '2026-10-08', mode: 'star', vs: null });
+    expect(parseRoute('#/daily/2026-10-08/bollywood')).toEqual({ name: 'daily', day: '2026-10-08', mode: 'bollywood', vs: null });
+    expect(parseRoute('#/daily/2026-10-08/bollywood-hard')).toEqual({ name: 'daily', day: '2026-10-08', mode: 'bollywood-hard', vs: null });
+    expect(href({ name: 'daily', day: '2026-10-08', mode: 'bollywood-hard', vs: null })).toBe('#/daily/2026-10-08/bollywood-hard');
     expect(parseRoute('#/p/11571')).toEqual({ name: 'play', qid: 11571, mode: 'normal', vs: null });
     expect(parseRoute('#/p/11571/hard')).toEqual({ name: 'play', qid: 11571, mode: 'hard', vs: null });
     expect(parseRoute('#/p/11571/to/3454165?vs=abc')).toEqual({ name: 'play', qid: 11571, mode: 'normal', vs: 'abc', target: 3454165 });
@@ -19,7 +22,7 @@ describe('parseRoute', () => {
   });
 
   it('rejects malformed routes instead of guessing', () => {
-    const stars = ['#/p/1/to', '#/p/1/to/x', '#/p/1/to/2/hard', '#/p/1/hard/to/2', '#/p/1/to/2/3', '#/p/1/star', '#/daily/2026-10-08/star/hard'];
+    const stars = ['#/p/1/to', '#/p/1/to/x', '#/p/1/to/2/hard', '#/p/1/hard/to/2', '#/p/1/to/2/3', '#/p/1/star', '#/daily/2026-10-08/star/hard', '#/p/1/bollywood', '#/daily/2026-10-08/bollywood/star', '#/p/1/bollywood-hard', '#/p/1/to/9535/bollywood-hard', '#/daily/2026-10-08/bollywood/hard'];
     for (const bad of ['#/daily/yesterday', '#/daily/2026-10-08/easy', '#/p/abc', '#/p/1/hard/x', '#/nope', '#/stats/x', '#/g', '#/g/a b', '#/g/abc/x', ...stars]) {
       expect(parseRoute(bad)).toEqual({ name: 'unknown' });
     }

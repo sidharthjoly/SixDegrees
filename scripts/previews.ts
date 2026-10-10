@@ -6,6 +6,8 @@
  *   dist/d/<date>/hard/index.html  the same for hard mode
  *   dist/og/<date>-star.png        the star daily's (the day's start, heading for its star)
  *   dist/d/<date>/star/index.html  the star daily's page
+ *   dist/og/<date>-bollywood.png   the Bollywood daily's, and its pages under d/<date>/bollywood/
+ *                                  and d/<date>/bollywood-hard/
  * plus dist/og/home.png for the home page, dist/404.html, and the absolute URLs in
  * dist/index.html's preview tags.
  *
@@ -20,9 +22,9 @@ import { availableParallelism } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { drawPreviewCard, PREVIEW_HEIGHT, PREVIEW_WIDTH, type PreviewCard } from '../src/card.ts';
-import { EPOCH, dailyPick, dayNumber, starOfDay } from '../src/logic.ts';
+import { EPOCH, bollywoodOfDay, dailyPick, dayNumber, starOfDay } from '../src/logic.ts';
 import { dailyPage, displaySite, imagePath, normalizeSite, notFoundPage, pagePath, previewDays, shortDate, type PreviewMode } from '../src/preview-pages.ts';
-import type { Meta, PersonRow, Qid, TargetRow } from '../src/types.ts';
+import type { BollywoodFile, Meta, PersonRow, Qid, TargetRow } from '../src/types.ts';
 
 /** The site rebuilds at least monthly; pages this far ahead cover links shared until the next build. */
 const AHEAD_DAYS = 45;
@@ -87,9 +89,11 @@ function imageWriter(): { add(path: string, card: PreviewCard): Promise<void>; d
 
 interface DataFiles {
   meta: Meta;
+  /** bollywood.json, or null for data from before Bollywood mode. */
+  bollywood: BollywoodFile | null;
   person(id: Qid): PersonRow;
-  /** A person's row towards one of the other stars, or undefined. */
-  toward(star: Qid, id: Qid): TargetRow | undefined;
+  /** A person's row towards one of the other stars (`hard`: without Bollywood hard mode's banned films), or undefined. */
+  toward(star: Qid, id: Qid, hard?: boolean): TargetRow | undefined;
 }
 
 /** The data `vite build` copied into dist, the same files the deployed game reads. */
@@ -99,12 +103,15 @@ function loadData(): DataFiles | null {
   const { version } = JSON.parse(readFileSync(versionFile, 'utf8')) as { version: string };
   const base = join(DIST, 'data/v', version);
   const meta = JSON.parse(readFileSync(join(base, 'meta.json'), 'utf8')) as Meta;
+  const bollywoodFile = join(base, 'bollywood.json');
+  const bollywood = existsSync(bollywoodFile) ? (JSON.parse(readFileSync(bollywoodFile, 'utf8')) as BollywoodFile) : null;
   const shards = new Map<number, Record<string, PersonRow>>();
   const starShards = new Map<string, Record<string, TargetRow>>();
   return {
     meta,
-    toward(star, id) {
-      const file = join(base, `t/${star}/${id % meta.targetShards}.json`);
+    bollywood,
+    toward(star, id, hard = false) {
+      const file = join(base, `t/${star}${hard ? '-hard' : ''}/${id % meta.targetShards}.json`);
       let shard = starShards.get(file);
       if (!shard) {
         shard = JSON.parse(readFileSync(file, 'utf8')) as Record<string, TargetRow>;
@@ -168,6 +175,7 @@ async function main(): Promise<void> {
   const lookback = new Date(Date.parse(`${today}T00:00:00Z`) - BEHIND_DAYS * 86_400_000).toISOString().slice(0, 10);
   const days = previewDays(lookback > EPOCH ? lookback : EPOCH, today, AHEAD_DAYS);
   let starDays = 0;
+  let bollywoodDays = 0;
   for (const day of days) {
     const start = dailyPick(data.meta.daily, day);
     const [name, , dist, , , , hardDist] = data.person(start);
@@ -190,7 +198,7 @@ async function main(): Promise<void> {
     // The star daily, picked as the game and the Worker pick it.
     const targets = data.meta.targets ?? [];
     const found = await starOfDay(
-      targets.map((t) => t.id),
+      targets,
       day,
       start,
       async (s) => {
@@ -199,6 +207,28 @@ async function main(): Promise<void> {
       },
     );
     const star = found && targets.find((t) => t.id === found.id);
+    // The Bollywood daily, from its own start to Shah Rukh Khan, in either mode.
+    const bolly = data.bollywood && bollywoodOfDay(data.bollywood, day);
+    const bollyStar = bolly && targets.find((t) => t.id === bolly.goal);
+    const bollyPar = bolly ? data.toward(bolly.goal, bolly.start)?.[0] : undefined;
+    if (bolly && bollyStar && bollyPar !== undefined && bollyPar >= 0) {
+      bollywoodDays++;
+      const [bollyName] = data.person(bolly.start);
+      const hardPar = data.toward(bolly.goal, bolly.start, true)?.[0];
+      await images.add(imagePath(day, 'bollywood'), {
+        tag: `Daily #${number}`,
+        name: bollyName,
+        foot: shortDate(day),
+        pills: [`Daily #${number}`, 'Bollywood'],
+        blurb: `Connect ${bollyName} to ${bollyStar.name} through the films they share.`,
+        site: footer,
+        goal: bollyStar.name,
+      });
+      const page = { site, day, number, mode: 'bollywood' as const, name: bollyName, par: bollyPar, star: { id: bollyStar.id, name: bollyStar.name } };
+      write(pagePath(day, 'bollywood') + 'index.html', dailyPage(page, app));
+      // Its starts all reach him in hard mode too, but don't publish "Par -1" if that changes.
+      if (hardPar !== undefined && hardPar >= 0) write(pagePath(day, 'bollywood-hard') + 'index.html', dailyPage({ ...page, mode: 'bollywood-hard', par: hardPar }, app));
+    }
     if (!found || !star) continue;
     starDays++;
     await images.add(imagePath(day, 'star'), {
@@ -214,7 +244,7 @@ async function main(): Promise<void> {
   }
   await images.done();
   const seconds = ((performance.now() - started) / 1000).toFixed(1);
-  console.log(`previews: ${days.length} dailies (${days[0]} to ${days.at(-1)}), ${starDays} with a star daily, for ${site} in ${seconds}s`);
+  console.log(`previews: ${days.length} dailies (${days[0]} to ${days.at(-1)}), ${starDays} with a star daily, ${bollywoodDays} with a Bollywood daily, for ${site} in ${seconds}s`);
 }
 
 await main();

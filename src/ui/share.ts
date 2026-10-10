@@ -1,5 +1,5 @@
 import { CARD_FONTS, STORY_HEIGHT, STORY_WIDTH, drawResultCard, drawStory, resultCardSize, type CardStep, type ResultCard, type StoryCard } from '../card';
-import { JT, dayNumber, fold } from '../logic';
+import { JT, dayNumber, fold, hardRules } from '../logic';
 import { displaySite, pagePath } from '../preview-pages';
 import { href } from '../router';
 import type { Mode, Qid } from '../types';
@@ -82,7 +82,7 @@ export function resultCard(ctx: ResultContext, withPath: boolean, site: string):
   ];
   return {
     label: ctx.day ? `Daily #${dayNumber(ctx.day)}` : 'Free play',
-    hard: ctx.mode === 'hard',
+    hard: hardRules(ctx.mode),
     start: ctx.start.name,
     goal: ctx.goal.name,
     par: ctx.par,
@@ -108,7 +108,7 @@ export function fileName(ctx: Pick<ResultContext, 'day' | 'mode' | 'start' | 'go
   const slug = (name: string) => fold(name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const which = ctx.day ? String(dayNumber(ctx.day)) : slug(ctx.start.name) || 'free-play';
   const goal = ctx.goal.id === JT ? 'jt' : slug(ctx.goal.name) || 'star';
-  const base = `six-degrees-${goal}-${which}${ctx.mode === 'hard' ? '-hard' : ''}`;
+  const base = `six-degrees-${goal}-${which}${hardRules(ctx.mode) ? '-hard' : ''}`;
   return kind === 'video' ? `${base}.mp4` : `${base}${kind === 'story' ? '-story' : ''}.png`;
 }
 

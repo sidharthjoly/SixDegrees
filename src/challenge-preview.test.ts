@@ -54,6 +54,20 @@ describe('challengeTitle', () => {
     expect(challengeTitle(code(), 'star', meryl)).toBeNull();
     expect(challengeTitle(code({ target: 873 }), 'star')).toBeNull();
   });
+
+  it('names the star on a Bollywood daily’s page the same way', () => {
+    const srk = { id: 9535, name: 'Shah Rukh Khan' };
+    expect(challengeTitle(code({ target: 9535 }), 'bollywood', srk)).toBe('Sid got to Shah Rukh Khan in 3 films. Can you beat that?');
+    expect(challengeTitle(code(), 'bollywood', srk)).toBeNull();
+  });
+
+  it('takes only hard codes on a Bollywood hard-mode page', () => {
+    const srk = { id: 9535, name: 'Shah Rukh Khan' };
+    const hard = { target: 9535, mode: 'hard' as const, moves: [{ grade: 'closer' as const, hinted: false }, { grade: 'closer' as const, hinted: false }] };
+    expect(challengeTitle(code(hard), 'bollywood-hard', srk)).toBe('Sid got to Shah Rukh Khan in 2 films in hard mode. Can you beat that?');
+    expect(challengeTitle(code({ target: 9535 }), 'bollywood-hard', srk)).toBeNull();
+    expect(challengeTitle(code(hard), 'bollywood', srk)).toBeNull();
+  });
 });
 
 describe('DAILY_PAGE_RE', () => {
@@ -61,6 +75,8 @@ describe('DAILY_PAGE_RE', () => {
     expect(DAILY_PAGE_RE.exec('/d/2026-10-08/')?.[1]).toBeUndefined();
     expect(DAILY_PAGE_RE.exec('/d/2026-10-08/hard/')?.[1]).toBe('hard');
     expect(DAILY_PAGE_RE.exec('/d/2026-10-08/star/')?.[1]).toBe('star');
+    expect(DAILY_PAGE_RE.exec('/d/2026-10-08/bollywood/')?.[1]).toBe('bollywood');
+    expect(DAILY_PAGE_RE.exec('/d/2026-10-08/bollywood-hard/')?.[1]).toBe('bollywood-hard');
     for (const other of ['/d/2026-10-08', '/d/2026-10-08/index.html', '/d/x/', '/', '/og/2026-10-08.png', '/d/2026-10-08/easy/', '/d/2026-10-08/hard/star/']) expect(DAILY_PAGE_RE.test(other)).toBe(false);
   });
 });

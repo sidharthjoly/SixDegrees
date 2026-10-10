@@ -310,7 +310,7 @@ function boardList(members: GroupMember[], mode: Mode, limit = Infinity): HTMLEl
 
 function todayCard(board: GroupBoard, day: string, mode: Mode, redraw: (mode: Mode) => void): HTMLElement {
   // The other modes' tabs only once someone has played one.
-  const anyOther = board.members.some((m) => m.hard || m.star);
+  const anyOther = board.members.some((m) => m.hard || m.star || m.bollywood || m['bollywood-hard']);
   const played = board.members.filter((m) => resultIn(m, mode)).length;
   const tab = (m: Mode, label: string) => h('button', { type: 'button', class: 'chip' + (m === mode ? ' on' : ''), 'aria-pressed': String(m === mode), onclick: () => redraw(m) }, label);
   return h(
@@ -318,7 +318,15 @@ function todayCard(board: GroupBoard, day: string, mode: Mode, redraw: (mode: Mo
     { class: 'card group-today' },
     h('h2', null, `Daily #${dayNumber(day)}`),
     anyOther || mode !== 'normal'
-      ? h('div', { class: 'chips', role: 'group', 'aria-label': 'Mode' }, tab('normal', 'Normal'), tab('hard', 'Hard'), tab('star', starName ? `Star: ${starName}` : 'Star'))
+      ? h(
+          'div',
+          { class: 'chips', role: 'group', 'aria-label': 'Mode' },
+          tab('normal', 'Normal'),
+          tab('hard', 'Hard'),
+          tab('star', starName ? `Star: ${starName}` : 'Star'),
+          tab('bollywood', 'Bollywood'),
+          tab('bollywood-hard', 'Bollywood hard'),
+        )
       : null,
     h('p', { class: 'muted' }, played ? `${played} of ${plural(board.members.length, 'member')} played` : 'Nobody has played yet today.'),
     boardList(board.members, mode),
@@ -331,7 +339,7 @@ function weekCard(board: GroupBoard): HTMLElement {
     'section',
     { class: 'card group-week' },
     h('h2', null, 'This week'),
-    h('p', { class: 'muted' }, 'The last seven dailies, JT’s or the star’s, whichever went better: 3 points for par, 2 for one over, 1 for two over.'),
+    h('p', { class: 'muted' }, 'The last seven dailies, JT’s, the star’s or Bollywood’s, whichever went best: 3 points for par, 2 for one over, 1 for two over.'),
     h(
       'table',
       { class: 'week-table' },

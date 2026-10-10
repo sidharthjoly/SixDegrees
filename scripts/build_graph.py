@@ -6,7 +6,9 @@ path back to him. Among equally short paths it prefers the one whose least-known
 film is best known (Wikipedia sitelinks), so revealed answers use recognisable films.
 
 A second BFS does the same for hard mode, where JT's best-known films are banned.
-One more per star in TARGETS gives free play its other goals (normal mode only).
+One more per star in TARGETS and BOLLYWOOD_TARGETS gives free play, the star daily and
+Bollywood mode their other goals (normal mode only), and one more from Shah Rukh Khan without
+his best-known films gives Bollywood mode its hard mode.
 
 Output goes to public/data/v/<version>/, where <version> is a hash of the contents, and
 public/data/version.json names it. Vite compiles that version into the bundle, so a
@@ -24,7 +26,12 @@ versa), and an unchanged rebuild keeps the same URLs.
                            hardDist, hardParentFilm, hardParentPerson]
   f/NN.json        qid -> [title, year, sitelinks, [[person, name, sitelinks]...]]
   t/<star>/NN.json qid -> [dist, parentFilm, parentPerson]: the same as a person row's
-                   first steps, but towards one of the TARGETS. NN is qid % TARGET_SHARDS.
+                   first steps, but towards one of the TARGETS or BOLLYWOOD_TARGETS.
+                   NN is qid % TARGET_SHARDS. t/<SRK>-hard/ is the same without the films
+                   Bollywood hard mode bans.
+  bollywood.json   Bollywood mode's daily: the Bollywood stars it can start from, heading for
+                   Shah Rukh Khan; the films its hard mode bans; and the best-known Bollywood
+                   names, for suggestions
 
 Shard NN is qid % SHARDS, so the client fetches one small file per lookup. Film titles
 and cast names are inlined (best known first) so a list renders from a single shard.
@@ -76,21 +83,75 @@ HARD_BANNED = [
     798797,  # Bad Teacher
 ]
 
-# The other stars free play can head for. JT stays the game: dailies, hard mode and the
-# online features are his alone. Pinned like the hard-mode bans, so the list only changes
-# when this does; a star who drops out of JT's part of the graph is skipped with a warning.
+# The other stars free play and the star daily can head for, with the first day the star
+# daily may pick each one. The star daily is picked by rendezvous hashing over this list, so a
+# star added without a date would take over some days already played (shared, on group
+# boards, in challenge links): give every new star a date a few days after it ships. Pinned
+# like the hard-mode bans; a star who drops out of JT's part of the graph is skipped with a
+# warning.
 TARGETS = [
-    3454165,  # Kevin Bacon
-    2263,  # Tom Hanks
-    172678,  # Samuel L. Jackson
-    873,  # Meryl Streep
-    34436,  # Scarlett Johansson
-    38111,  # Leonardo DiCaprio
-    37079,  # Tom Cruise
-    40096,  # Will Smith
-    36949,  # Robert De Niro
-    189489,  # Zendaya
+    (3454165, None),  # Kevin Bacon
+    (2263, None),  # Tom Hanks
+    (172678, None),  # Samuel L. Jackson
+    (873, None),  # Meryl Streep
+    (34436, None),  # Scarlett Johansson
+    (38111, None),  # Leonardo DiCaprio
+    (37079, None),  # Tom Cruise
+    (40096, None),  # Will Smith
+    (36949, None),  # Robert De Niro
+    (189489, None),  # Zendaya
+    (35332, "2026-10-14"),  # Brad Pitt
+    (1924847, "2026-10-14"),  # Margot Robbie
+    (43416, "2026-10-14"),  # Keanu Reeves
+    (42101, "2026-10-14"),  # Denzel Washington
+    (37459, "2026-10-14"),  # Nicole Kidman
+    (189490, "2026-10-14"),  # Jennifer Lawrence
+    (81328, "2026-10-14"),  # Harrison Ford
+    (48337, "2026-10-14"),  # Morgan Freeman
+    (36970, "2026-10-14"),  # Jackie Chan
+    (147077, "2026-10-14"),  # Emma Stone
 ]
+# The stars the star daily launched with, the only ones allowed no date.
+LAUNCH_TARGETS = {3454165, 2263, 172678, 873, 34436, 38111, 37079, 40096, 36949, 189489}
+
+# Bollywood mode is Six Degrees of Shah Rukh Khan: its daily heads for him, as the main one
+# does for JT, and its hard mode bans his five best-known films, pinned like JT's.
+SRK = 9535
+SRK_HARD_BANNED = [
+    466443,  # Kabhi Khushi Kabhie Gham
+    623336,  # Kuch Kuch Hota Hai
+    247854,  # Devdas
+    849343,  # Dilwale Dulhania Le Jayenge
+    330663,  # My Name Is Khan
+]
+# Bollywood mode's stars: what free play heads for there, Shah Rukh Khan first.
+BOLLYWOOD_TARGETS = [
+    9535,  # Shah Rukh Khan
+    9570,  # Amitabh Bachchan
+    47059,  # Aishwarya Rai
+    158957,  # Priyanka Chopra
+    9543,  # Salman Khan
+    9557,  # Aamir Khan
+    4725343,  # Alia Bhatt
+    159178,  # Deepika Padukone
+    233619,  # Hrithik Roshan
+    184885,  # Kareena Kapoor
+]
+# Bollywood's own stars, the Bollywood daily's starts: famous, with most of their films in
+# Hindi (or Urdu). Their best-known films and the answer path must be recognisable, as for
+# the JT daily. Bollywood is close-knit (about a third of its stars share a film with Shah
+# Rukh Khan), so the starts are only the ones at least two films away: every one is par 2.
+# The bar is lower than the JT daily's so there are more of them, and the daily comes round
+# to the same start less often.
+BOLLYWOOD_MIN_SITELINKS = 20
+BOLLYWOOD_MIN_HINDI_FILMS = 5
+BOLLYWOOD_MIN_HINDI_SHARE = 0.5
+# Fewer starts than this and the build fails: the films check is cutting too hard.
+BOLLYWOOD_MIN_STARTS = 30
+# How many of the best-known Bollywood names go to the home page's suggestions.
+BOLLYWOOD_PICKS = 60
+# " (2001 film)", " (1951 Hindi film)": the disambiguation on Wikipedia article titles.
+FILM_SUFFIX = re.compile(r" \([^()]*\bfilm\)$")
 # Fewer, bigger shards than p/: a row here is three numbers, so one move still costs a
 # download of about 3 KB gzipped, without ten more sets of 4096 files.
 TARGET_SHARDS = 1024
@@ -245,13 +306,30 @@ def daily_pool(dist, parent, hard_dist, films, people, credits) -> list[int]:
     return sorted(pool)
 
 
-def path_to_jt(p, parent):
+def path_to_jt(p, parent, source=JT):
+    """The (person, film) steps from p to source (JT unless given) along parent pointers."""
     steps = []
-    while p != JT:
+    while p != source:
         f, q = parent[p]
         steps.append((p, f))
         p = q
     return steps
+
+
+def load_hindi(films) -> set[int]:
+    """Bollywood's films (in Hindi, Urdu or Hindustani), renamed after their English
+    Wikipedia article, the name fans know them by, where there is one."""
+    hindi = set()
+    for c in read_tsv("hindi"):
+        f = qid(c[0])
+        if f not in films:
+            continue
+        hindi.add(f)
+        if len(c) > 1 and c[1]:
+            title = FILM_SUFFIX.sub("", literal(c[1])).strip()
+            if title:
+                films[f] = (title, films[f][1], films[f][2])
+    return hindi
 
 
 def content_version(root: Path) -> str:
@@ -272,6 +350,8 @@ def write_json(path: Path, obj) -> int:
 
 def main() -> None:
     films, people, cast, credits = load()
+    hindi = load_hindi(films)
+    print(f"Bollywood: {len(hindi):,} films in Hindi, Urdu or Hindustani")
     dist, parent = bfs(films, people, cast, credits)
     verify(dist, parent, cast, credits)
 
@@ -287,6 +367,15 @@ def main() -> None:
     hard_hist = collections.Counter(hard_dist.values())
     print(f"hard mode: {len(dist) - len(hard_dist):,} people unreachable, "
           f"{sum(1 for p in hard_dist if hard_dist[p] > dist[p]):,} have a higher par")
+
+    if SRK not in dist:
+        sys.exit("FAIL: Shah Rukh Khan is not connected to Justin Timberlake")
+    for f in SRK_HARD_BANNED:
+        if SRK not in cast.get(f, []):
+            sys.exit(f"FAIL: Bollywood hard-mode ban Q{f} is not a Shah Rukh Khan film any more")
+    top5 = sorted(credits[SRK], key=lambda f: (-films[f][2], f))[:len(SRK_HARD_BANNED)]
+    if set(top5) != set(SRK_HARD_BANNED):
+        print("note: Shah Rukh Khan's best-known films are now", [films[f][0] for f in top5], "(Bollywood hard mode bans stay pinned)")
 
     if RONALDO not in dist:
         sys.exit("FAIL: Cristiano Ronaldo is not connected to Justin Timberlake")
@@ -344,10 +433,33 @@ def main() -> None:
     for p in (RONALDO, JT):
         print(f"  aliases for {people[p][0]}: {aliases.get(p)}")
 
-    # Free play's other stars: one more BFS each. JT's part of the graph is one connected
-    # piece, so every star in it reaches exactly the people JT does.
+    for t, since in TARGETS:
+        if since is None and t not in LAUNCH_TARGETS:
+            sys.exit(f"FAIL: Q{t} was added to TARGETS without a first day for the star daily")
+        if since is not None and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", since):
+            sys.exit(f"FAIL: Q{t}'s first day {since!r} isn't YYYY-MM-DD")
+
+    # Bollywood's own famous people: the Bollywood daily starts from them.
+    def hindi_share(p):
+        n = sum(1 for f in credits[p] if f in hindi)
+        return n, len(credits[p])
+
+    bollywood = sorted(
+        (p for p in dist if people[p][1] >= BOLLYWOOD_MIN_SITELINKS
+         and hindi_share(p)[0] >= BOLLYWOOD_MIN_HINDI_FILMS
+         and hindi_share(p)[0] >= BOLLYWOOD_MIN_HINDI_SHARE * hindi_share(p)[1]),
+        key=lambda p: (-people[p][1], p),
+    )
+    print(f"Bollywood stars: {len(bollywood):,} ({', '.join(people[p][0] for p in bollywood[:8])}, ...)")
+
+    def known(f, min_sitelinks):
+        return films[f][1] is not None and films[f][2] >= min_sitelinks
+
+    # The other stars, free play's and Bollywood mode's: one more BFS each. JT's part of the
+    # graph is one connected piece, so every star in it reaches exactly the people JT does.
+    stars = [(t, since, None) for t, since in TARGETS] + [(t, None, "bollywood") for t in BOLLYWOOD_TARGETS]
     targets = []
-    for t in TARGETS:
+    for t, since, world in stars:
         if t not in dist:
             print(f"warning: target Q{t} is no longer linked to JT, so free play drops them")
             continue
@@ -360,9 +472,50 @@ def main() -> None:
             f, q = t_parent.get(p, (0, 0))
             tshards[p % TARGET_SHARDS][p] = [d, f, q]
         size = sum(write_json(stage / "t" / str(t) / f"{i}.json", s) for i, s in enumerate(tshards))
-        targets.append({"id": t, "name": people[t][0], "film": films[by_fame(credits[t], films, 2)[0]][0]})
+        entry = {"id": t, "name": people[t][0], "film": films[by_fame(credits[t], films, 2)[0]][0]}
+        if since:
+            entry["from"] = since
+        if world:
+            entry["world"] = world
+        targets.append(entry)
         t_hist = collections.Counter(t_dist.values())
         print(f"to {people[t][0]}: {size / 1e6:.1f} MB raw, by distance {dict(sorted(t_hist.items()))}")
+        if t == SRK:
+            # Bollywood hard mode: the same again without his best-known films.
+            srk_cast, srk_credits = without(set(SRK_HARD_BANNED), cast)
+            h_dist, h_parent = bfs(films, people, srk_cast, srk_credits, SRK)
+            verify(h_dist, h_parent, srk_cast, srk_credits, SRK)
+            tshards = [{} for _ in range(TARGET_SHARDS)]
+            for p, d in h_dist.items():
+                f, q = h_parent.get(p, (0, 0))
+                tshards[p % TARGET_SHARDS][p] = [d, f, q]
+            size = sum(write_json(stage / "t" / f"{t}-hard" / f"{i}.json", s) for i, s in enumerate(tshards))
+            print(f"  hard mode: {size / 1e6:.1f} MB raw, {len(t_dist) - len(h_dist):,} people unreachable, "
+                  f"{sum(1 for p in h_dist if h_dist[p] > t_dist[p]):,} have a higher par")
+            # The Bollywood daily's starts, checked as daily_pool checks JT's.
+            srk_starts = [
+                p for p in bollywood
+                if p != t and t_dist[p] >= DAILY_MIN_DIST and p in h_dist
+                and known(max(credits[p], key=lambda f: (films[f][2], -f)), DAILY_TOP_FILM_SITELINKS)
+                and all(known(f, DAILY_PATH_FILM_SITELINKS) for _, f in path_to_jt(p, t_parent, t))
+            ]
+            by_par = collections.Counter(t_dist[p] for p in srk_starts)
+            print(f"  Bollywood daily: {len(srk_starts)} starts, by par {dict(sorted(by_par.items()))}")
+            if len(srk_starts) < BOLLYWOOD_MIN_STARTS:
+                sys.exit(f"FAIL: only {len(srk_starts)} Bollywood daily starts")
+
+    size = write_json(
+        stage / "bollywood.json",
+        {
+            "goal": SRK,
+            "starts": sorted(srk_starts),
+            "hardBanned": [{"id": f, "title": films[f][0], "year": films[f][1]} for f in SRK_HARD_BANNED],
+            "picks": [[p, people[p][0]] for p in bollywood[:BOLLYWOOD_PICKS]],
+            "stars": len(bollywood),
+            "films": len(hindi),
+        },
+    )
+    print(f"bollywood.json: {size / 1e3:.0f} KB raw")
 
     daily = daily_pool(dist, parent, hard_dist, films, people, credits)
     if RONALDO not in daily:

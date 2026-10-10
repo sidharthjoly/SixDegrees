@@ -273,8 +273,10 @@ export interface GroupMember {
   me: boolean;
   normal: GroupResult | null;
   hard: GroupResult | null;
-  /** The star daily's. Missing before the server had it. */
+  /** The star and Bollywood dailies'. Missing before the server had them. */
   star?: GroupResult | null;
+  bollywood?: GroupResult | null;
+  'bollywood-hard'?: GroupResult | null;
   week: { played: number; points: number };
 }
 

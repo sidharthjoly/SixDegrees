@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { addDays } from './days';
 import { JT, dailyPick, starOfDay } from './logic';
-import { checkRoute, dayStar, MAX_CHECKED_STEPS, parseRoute, RouteError, type Claim } from './route-check';
-import { A, B, BANNED, C, F1, F2, F3, F4, F5, F6, FAR, NEAR, NO_HARD, START, TARGETS, fixtureData, route } from './route-fixture';
+import { checkRoute, dailyPuzzle, MAX_CHECKED_STEPS, parseRoute, RouteError, type Claim } from './route-check';
+import { A, B, BANNED, BOLLY, C, D, F1, F2, F3, F4, F5, F6, F7, F8, F9, FAR, NEAR, NO_HARD, START, TARGETS, fixtureData, route } from './route-fixture';
 
 const claim = (over: Partial<Claim>): Claim => ({ day: '2026-10-09', mode: 'normal', gaveUp: false, route: null, ...over });
 const refused = async (c: Claim, data = fixtureData()) => {
@@ -80,13 +80,13 @@ describe('the star daily', () => {
   const days = Array.from({ length: 60 }, (_, i) => addDays('2026-10-08', i));
   /** The first day whose top-ranked star is `id`, were every star far enough away. */
   const dayWithFirst = async (id: number) => {
-    for (const day of days) if ((await starOfDay([NEAR, FAR], day, START, async () => 5))?.id === id) return day;
+    for (const day of days) if ((await starOfDay(TARGETS, day, START, async () => 5))?.id === id) return day;
     throw new Error('no such day');
   };
 
   it('heads for the day’s star, passing over one within a film of the start', async () => {
     for (const day of [await dayWithFirst(NEAR), await dayWithFirst(FAR)]) {
-      expect(await dayStar(day, fixtureData())).toEqual({ id: FAR, par: 2 });
+      expect(await dailyPuzzle(day, 'star', fixtureData())).toEqual({ start: START, goal: FAR, par: 2, banned: new Set() });
       const r = route([F3, B], [F6, FAR]);
       expect(await checkRoute(star({ day, route: r }), fixtureData())).toEqual({ par: 2, gaveUp: false, films: 2, firstFilm: F3, route: r });
     }
@@ -107,5 +107,50 @@ describe('the star daily', () => {
   it('doesn’t exist without other stars, or when every star is within a film of the start', async () => {
     expect(await refused(star({ route: route([F3, B], [F6, FAR]) }), fixtureData([START], []))).toMatch(/no star daily/);
     expect(await refused(star({ gaveUp: true }), fixtureData([START], TARGETS.filter((t) => t.id === NEAR)))).toMatch(/no star daily/);
+  });
+});
+
+describe('the Bollywood daily', () => {
+  const bolly = (over: Partial<Claim>) => claim({ mode: 'bollywood', ...over });
+
+  it('goes from the day’s Bollywood start to its Bollywood star', async () => {
+    expect(await dailyPuzzle('2026-10-09', 'bollywood', fixtureData())).toEqual({ start: B, goal: BOLLY, par: 2, banned: new Set() });
+    const r = route([F4, C], [F7, BOLLY]);
+    expect(await checkRoute(bolly({ route: r }), fixtureData())).toEqual({ par: 2, gaveUp: false, films: 2, firstFilm: F4, route: r });
+  });
+
+  it('starts from its own start, not the JT daily’s, and ends at its star', async () => {
+    expect(await refused(bolly({ route: route([F3, B], [F4, C], [F7, BOLLY]) }))).toMatch(/Move 1/);
+    expect(await refused(bolly({ route: route([F4, C], [F5, JT]) }))).toMatch(/end/);
+  });
+
+  it('never turns up as the star daily', async () => {
+    for (let n = 0; n < 30; n++) expect((await dailyPuzzle(addDays('2026-10-08', n), 'star', fixtureData()))?.goal).not.toBe(BOLLY);
+  });
+
+  it('doesn’t exist in data from before Bollywood mode', async () => {
+    expect(await refused(bolly({ gaveUp: true }), fixtureData([START], TARGETS, null))).toMatch(/no Bollywood daily/);
+    expect(await refused(bolly({ mode: 'bollywood-hard', gaveUp: true }), fixtureData([START], TARGETS, null))).toMatch(/no Bollywood daily/);
+  });
+});
+
+describe('Bollywood hard mode', () => {
+  const hard = (over: Partial<Claim>) => claim({ mode: 'bollywood-hard', ...over });
+
+  it('is the same start and star, with par from the rows without its banned films', async () => {
+    expect(await dailyPuzzle('2026-10-09', 'bollywood-hard', fixtureData())).toEqual({ start: B, goal: BOLLY, par: 3, banned: new Set([F7]) });
+    const r = route([F6, FAR], [F8, D], [F9, BOLLY]);
+    expect(await checkRoute(hard({ route: r }), fixtureData())).toEqual({ par: 3, gaveUp: false, films: 3, firstFilm: F6, route: r });
+  });
+
+  it('refuses a route through its banned films that the Bollywood daily takes', async () => {
+    const r = route([F4, C], [F7, BOLLY]);
+    expect(await checkRoute(claim({ mode: 'bollywood', route: r }), fixtureData())).toMatchObject({ films: 2 });
+    expect(await refused(hard({ route: r }))).toMatch(/Move 2/);
+  });
+
+  it('leaves JT’s banned films alone, and JT’s hard mode leaves its own', async () => {
+    expect(await checkRoute(claim({ mode: 'hard', route: route([F3, B], [F4, C], [F5, JT]) }), fixtureData())).toMatchObject({ par: 3 });
+    expect(await checkRoute(hard({ gaveUp: true, route: route([F3, START], [F1, A], [F2, JT], [BANNED, B]) }), fixtureData())).toMatchObject({ films: 4 });
   });
 });

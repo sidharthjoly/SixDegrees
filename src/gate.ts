@@ -1,8 +1,8 @@
 import { isValidName } from './challenge-code';
 import { isDayKey } from './days';
 import { JT } from './logic';
-import { checkRoute, dayStar, RouteError, type RouteData } from './route-check';
-import type { Meta, PersonRow, TargetRow } from './types';
+import { checkRoute, dailyPuzzle, RouteError, type RouteData } from './route-check';
+import type { BollywoodFile, Meta, Mode, PersonRow, TargetRow } from './types';
 
 /*
  * The gate in front of the game's database writes, which the Cloudflare Worker (worker/) runs
@@ -39,6 +39,10 @@ export interface GateEnv {
   SOURCE_SECRET?: string;
 }
 
+/** Every daily's mode, as the database takes them. */
+const MODES: readonly Mode[] = ['normal', 'hard', 'star', 'bollywood', 'bollywood-hard'];
+const isMode = (m: unknown): m is Mode => MODES.includes(m as Mode);
+
 /** Far beyond any real call: a result's route is at most 200 films of 13 characters. */
 const MAX_BODY = 4096;
 
@@ -46,8 +50,8 @@ const MAX_BODY = 4096;
 
 /**
  * The site's data, as the game reads it (src/data.ts): the current version from
- * data/version.json, then that version's meta.json, person shards and the other stars'
- * shards (for the star daily). Versions are
+ * data/version.json, then that version's meta.json, person shards, the other stars' shards
+ * and bollywood.json (for the star and Bollywood dailies). Versions are
  * content-hashed, so their files never change and are kept across requests while the Worker
  * stays warm; which version is current is asked again after a few minutes.
  */
@@ -55,12 +59,14 @@ const VERSION_TTL_MS = 5 * 60_000;
 const MAX_SHARDS = 200;
 const versions = new Map<string, { version: Promise<string>; at: number }>();
 const metas = new Map<string, Promise<Meta>>();
+const bollywoods = new Map<string, Promise<BollywoodFile | undefined>>();
 const shards = new Map<string, Promise<Record<string, unknown>>>();
 
 /** Forgets every cached file. For tests. */
 export function forgetSiteData(): void {
   versions.clear();
   metas.clear();
+  bollywoods.clear();
   shards.clear();
 }
 
@@ -100,7 +106,13 @@ async function siteData(origin: string, upstream: typeof fetch): Promise<RouteDa
     meta,
     person: async (id) => (await row(`${base}p/${id % meta.shards}.json`, id)) as PersonRow | undefined,
     // Data built before the other stars has none of their files, nor any stars to ask about.
-    toward: async (star, id) => (meta.targetShards ? ((await row(`${base}t/${star}/${id % meta.targetShards}.json`, id)) as TargetRow | undefined) : undefined),
+    toward: async (star, id, hard = false) =>
+      meta.targetShards ? ((await row(`${base}t/${star}${hard ? '-hard' : ''}/${id % meta.targetShards}.json`, id)) as TargetRow | undefined) : undefined,
+    // Nor, before Bollywood mode, a Bollywood file: Bollywood stars come with it.
+    bollywood: () =>
+      meta.targets?.some((t) => t.world === 'bollywood')
+        ? remember(bollywoods, base, () => getJson<BollywoodFile>(`${base}bollywood.json`, upstream))
+        : Promise.resolve(undefined),
   };
 }
 
@@ -209,11 +221,12 @@ export async function handleWrite(request: Request, env: GateEnv, upstream: type
 
   // A hint is the next step of a shortest route from where the player is: towards JT in
   // normal mode, towards the day's star (as the game picks it, never as the call says) in the
-  // star daily. Hard mode has none. It's only given once the database has recorded the asking.
+  // star and Bollywood dailies. Hard modes have none. It's only given once the database has
+  // recorded the asking.
   let hint: { film: number; person: number } | null = null;
   if (fn === 'sixdegrees_hint') {
     const { p_day: day, p_mode: mode, p_person: person } = call;
-    if (!isDayKey(day) || (mode !== 'normal' && mode !== 'star') || typeof person !== 'number' || !Number.isInteger(person) || person <= 0) {
+    if (!isDayKey(day) || (mode !== 'normal' && mode !== 'star' && mode !== 'bollywood') || typeof person !== 'number' || !Number.isInteger(person) || person <= 0) {
       return refuse(400, 'There’s no hint for that.', '22023');
     }
     let step: [number, number] | undefined;
@@ -223,8 +236,8 @@ export async function handleWrite(request: Request, env: GateEnv, upstream: type
         const row = person === JT ? undefined : await data.person(person);
         step = row && [row[3], row[4]];
       } else {
-        const star = await dayStar(day, data);
-        const row = star && person !== star.id ? await data.toward(star.id, person) : undefined;
+        const puzzle = await dailyPuzzle(day, mode, data);
+        const row = puzzle && person !== puzzle.goal ? await data.toward(puzzle.goal, person) : undefined;
         step = row && [row[1], row[2]];
       }
     } catch {
@@ -236,7 +249,7 @@ export async function handleWrite(request: Request, env: GateEnv, upstream: type
 
   if (fn === 'sixdegrees_submit') {
     const { p_day: day, p_mode: mode, p_gave_up: gaveUp, p_route: route } = call;
-    if (!isDayKey(day) || (mode !== 'normal' && mode !== 'hard' && mode !== 'star') || typeof gaveUp !== 'boolean' || (route != null && typeof route !== 'string')) {
+    if (!isDayKey(day) || !isMode(mode) || typeof gaveUp !== 'boolean' || (route != null && typeof route !== 'string')) {
       return refuse(400, 'That isn’t a result.', '22023');
     }
     let data: RouteData;

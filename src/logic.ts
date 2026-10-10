@@ -1,4 +1,4 @@
-import type { FilmRef, Loader, Meta, Mode, Person, Qid, Reach, SearchRow } from './types';
+import type { BollywoodFile, FilmRef, Loader, Meta, Mode, Person, Qid, Reach, SearchRow, Target } from './types';
 
 export const JT: Qid = 43432;
 export const JT_NAME = 'Justin Timberlake';
@@ -12,8 +12,9 @@ export interface Step {
 }
 
 /**
- * Who a game heads for: JT, in either mode, or in free play one of the other stars in
- * meta.json's targets (normal mode only, since hard mode is about JT's own films).
+ * Who a game heads for: JT, in either mode, or one of the other stars in meta.json's targets
+ * (normal mode only, since hard mode is about JT's own films, except for Shah Rukh Khan in
+ * Bollywood hard mode).
  */
 export interface Goal {
   id: Qid;
@@ -23,13 +24,22 @@ export interface Goal {
 
 export const jtGoal = (mode: Mode = 'normal'): Goal => ({ id: JT, name: JT_NAME, mode });
 
+/** The dailies that head for one of the other stars rather than JT: the star daily and Bollywood mode's two. */
+export const starDaily = (mode: Mode): mode is 'star' | 'bollywood' | 'bollywood-hard' => mode === 'star' || bollywoodDaily(mode);
+
+/** Bollywood mode's dailies, heading for Shah Rukh Khan: normal rules or hard. */
+export const bollywoodDaily = (mode: Mode): mode is 'bollywood' | 'bollywood-hard' => mode === 'bollywood' || mode === 'bollywood-hard';
+
+/** The modes with hard rules: banned films and no hints. */
+export const hardRules = (mode: Mode) => mode === 'hard' || mode === 'bollywood-hard';
+
 /**
  * The goal a game heads for: JT when it names no one (or JT), otherwise one of the build's
- * other stars, in normal mode (free play) or the star daily. Null for anyone else, for another
- * star in hard mode, and for a star daily without its star.
+ * other stars, in normal mode (free play), the star daily or a Bollywood daily. Null for
+ * anyone else, for another star in JT's hard mode, and for a star or Bollywood daily without one.
  */
 export function goalFor(meta: Pick<Meta, 'targets'>, target: Qid | undefined, mode: Mode): Goal | null {
-  if (target === undefined || target === JT) return mode === 'star' ? null : jtGoal(mode);
+  if (target === undefined || target === JT) return starDaily(mode) ? null : jtGoal(mode);
   const star = meta.targets.find((t) => t.id === target);
   return star && mode !== 'hard' ? { id: star.id, name: star.name, mode } : null;
 }
@@ -47,6 +57,10 @@ export interface DayStar {
  */
 export const STAR_CANDIDATES = 5;
 
+/** The stars the star daily can pick on `day`: free play's (not Bollywood's), from their first day. */
+export const starsOn = (stars: Pick<Target, 'id' | 'from' | 'world'>[], day: string): Qid[] =>
+  stars.filter((s) => !s.world && (!s.from || s.from <= day)).map((s) => s.id);
+
 /**
  * The star daily: the day's start (dailyPick) heading for one of the other stars instead of
  * JT. Everyone gets the same star, by rendezvous hashing like dailyPick, so a rebuild that adds
@@ -56,8 +70,14 @@ export const STAR_CANDIDATES = 5;
  *
  * The game and the Worker both pick with this, so they always agree on the day's star.
  */
-export async function starOfDay(stars: Qid[], day: string, start: Qid, distance: (star: Qid) => Promise<number>): Promise<DayStar | null> {
-  const ranked = stars
+export async function starOfDay(
+  stars: Pick<Target, 'id' | 'from' | 'world'>[],
+  day: string,
+  start: Qid,
+  distance: (star: Qid) => Promise<number>,
+): Promise<DayStar | null> {
+  // A star added later only joins from their first day, so days already played never change.
+  const ranked = starsOn(stars, day)
     .filter((id) => id !== start)
     .map((id) => ({ id, score: hash(`six-degrees-star:${day}:${id}`) }))
     .sort((a, b) => b.score - a.score || a.id - b.id)
@@ -67,6 +87,17 @@ export async function starOfDay(stars: Qid[], day: string, start: Qid, distance:
     if (par >= 2 && par !== Infinity) return { id, par };
   }
   return null;
+}
+
+/**
+ * The Bollywood daily, in either mode: the day's start from the Bollywood stars the build
+ * listed (bollywood.json), heading for Shah Rukh Khan. Picked like the JT daily but under its
+ * own key: someone in both pools who wins one pick would otherwise very likely win the other,
+ * and both dailies would start from them that day. The game and the Worker both pick with
+ * this. Par is the start's distance to him.
+ */
+export function bollywoodOfDay(file: Pick<BollywoodFile, 'goal' | 'starts'>, day: string): { start: Qid; goal: Qid } | null {
+  return file.starts.length > 0 ? { start: dailyPick(file.starts, `bollywood:${day}`), goal: file.goal } : null;
 }
 
 /** The goal as a route's `target`: left out for JT. */
@@ -79,7 +110,7 @@ export function reachIn(p: Person, mode: Mode): Reach {
 
 /** Distance and first step towards the goal: JT's are in the person's own row, another star's in their files. */
 export function reachTo(p: Person, goal: Goal, load: Loader): Promise<Reach> {
-  return goal.id === JT ? Promise.resolve(reachIn(p, goal.mode)) : load.reach(goal.id, p.id);
+  return goal.id === JT ? Promise.resolve(reachIn(p, goal.mode)) : load.reach(goal.id, p.id, hardRules(goal.mode));
 }
 
 /** Follow parent pointers from `from` to the goal. Uses no film shards: the film title is in the person's own credits. */
@@ -131,7 +162,7 @@ export interface ShareInput {
 
 export function shareText(s: ShareInput): string {
   const other = s.goal && s.goal.id !== JT ? s.goal.name : null;
-  const title = `Six Degrees of ${other ?? 'JT'}` + (s.daily === null ? '' : ` #${s.daily}`) + (s.mode === 'hard' ? ' (hard)' : '');
+  const title = `Six Degrees of ${other ?? 'JT'}` + (s.daily === null ? '' : ` #${s.daily}`) + (hardRules(s.mode) ? ' (hard)' : '');
   const result = s.gaveUp
     ? `gave up after ${plural(s.moves.length, 'film')} (par ${s.par})`
     : `${plural(s.moves.length, 'film')} (par ${s.par})`;
