@@ -6,7 +6,8 @@ import { onLeave } from './shell';
  * - with a mouse, the hard shadows lean away from the cursor (it's the light), the dot
  *   grid bulges under it as if something were pressing up behind the page, and the daily
  *   sticker (a link) tilts towards it. In Bollywood mode the dots under it switch on too,
- *   like fairy lights.
+ *   like fairy lights. The card leading to the other world does the same inside it, as
+ *   that world's page would: lights on JT's page, a plain bulge on Bollywood's.
  * Nothing runs under prefers-reduced-motion, and everything is torn down on leaving.
  */
 export function startHomeFx(home: HTMLElement): void {
@@ -44,6 +45,8 @@ function followPointer(home: HTMLElement): void {
   home.classList.add('fx-light');
   const sticker = home.querySelector<HTMLElement>('.sticker-link');
   const field = dotField();
+  const card = home.querySelector<HTMLElement>('.world-card');
+  const cardField = card && dotField(card);
 
   // The light position eases towards the cursor rather than snapping, so shadows glide.
   let target = { x: 0, y: 0 };
@@ -73,12 +76,21 @@ function followPointer(home: HTMLElement): void {
     if (e.pointerType !== 'mouse') return;
     target = { x: (e.clientX / innerWidth) * 2 - 1, y: (e.clientY / innerHeight) * 2 - 1 };
     field.press(e.clientX, e.clientY);
+    if (card && cardField) {
+      // Only while the cursor is over the card, in its own coordinates (inside its border).
+      const r = card.getBoundingClientRect();
+      const x = e.clientX - r.left - card.clientLeft;
+      const y = e.clientY - r.top - card.clientTop;
+      if (x >= 0 && y >= 0 && x <= card.clientWidth && y <= card.clientHeight) cardField.press(x, y);
+      else cardField.release();
+    }
     tilt(e.clientX, e.clientY);
     if (!frame) frame = requestAnimationFrame(step);
   };
   const onOut = (e: MouseEvent) => {
     if (e.relatedTarget) return;
     field.release();
+    cardField?.release();
     sticker?.style.setProperty('--rx', '0deg');
     sticker?.style.setProperty('--ry', '0deg');
   };
@@ -90,6 +102,7 @@ function followPointer(home: HTMLElement): void {
     document.removeEventListener('mouseout', onOut);
     cancelAnimationFrame(frame);
     field.destroy();
+    cardField?.destroy();
   });
 }
 
@@ -135,16 +148,23 @@ function reachOf(key: number): number {
  * yellows), the cursor also switches on the dots within the bulge's reach: each is off or on,
  * nothing glows past it, and once the cursor moves on it switches off again, slowly.
  * It only redraws while something is moving or the page scrolls.
+ *
+ * Given a `card`, it draws that card's own dot grid instead, in the card's colours, behind
+ * its content; positions are then the card's, inside its border.
  */
-function dotField() {
+function dotField(card?: HTMLElement) {
   const canvas = document.createElement('canvas');
-  canvas.className = 'dot-field';
+  canvas.className = card ? 'dot-field-card' : 'dot-field';
   canvas.setAttribute('aria-hidden', 'true');
   const ctx = canvas.getContext('2d');
   if (!ctx) return { press() {}, release() {}, destroy() {} };
-  document.body.prepend(canvas);
+  if (card) card.prepend(canvas);
+  else document.body.prepend(canvas);
   // The canvas takes over from the CSS dots while it's here.
-  document.documentElement.classList.add('dot-canvas');
+  const owner = card ?? document.documentElement;
+  owner.classList.add('dot-canvas');
+  // A card's dots move with it, so only the page's scroll.
+  const scrolled = () => (card ? 0 : scrollY);
 
   let width = 0;
   let height = 0;
@@ -158,7 +178,7 @@ function dotField() {
   let frame = 0;
 
   const readColor = () => {
-    const css = getComputedStyle(document.documentElement);
+    const css = getComputedStyle(owner);
     color = css.getPropertyValue('--bg-dot').trim() || '#a29cf7';
     const off = parseHex(color);
     const on = ['--dot-on-1', '--dot-on-2', '--dot-on-3'].map((name) => parseHex(css.getPropertyValue(name)));
@@ -177,8 +197,8 @@ function dotField() {
 
   const resize = () => {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    width = innerWidth;
-    height = innerHeight;
+    width = card ? card.clientWidth : innerWidth;
+    height = card ? card.clientHeight : innerHeight;
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -190,6 +210,7 @@ function dotField() {
     ctx.fillStyle = color;
     ctx.beginPath();
     // Dots sit at document positions (scroll with the page), so offset by the scroll.
+    const scrollY = scrolled();
     const offsetY = -(scrollY % GRID);
     const active = bulge.strength > 0.001;
     const on: [number, number, number, string][] = [];
@@ -234,6 +255,7 @@ function dotField() {
   const switchLights = () => {
     if (!lights) return false;
     const near = new Set<number>();
+    const scrollY = scrolled();
     if (goal.strength > 0) {
       const top = Math.max(0, Math.floor((goal.y + scrollY - BULGE_RADIUS * 1.05) / GRID));
       const bottom = Math.ceil((goal.y + scrollY + BULGE_RADIUS * 1.05) / GRID);
@@ -297,8 +319,10 @@ function dotField() {
 
   readColor();
   resize();
-  window.addEventListener('resize', resize);
-  window.addEventListener('scroll', onScroll, { passive: true });
+  const sized = card && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
+  if (sized) sized.observe(card!);
+  else window.addEventListener('resize', resize);
+  if (!card) window.addEventListener('scroll', onScroll, { passive: true });
   scheme.addEventListener('change', onScheme);
 
   return {
@@ -314,10 +338,11 @@ function dotField() {
     },
     destroy() {
       cancelAnimationFrame(frame);
+      sized?.disconnect();
       window.removeEventListener('resize', resize);
       window.removeEventListener('scroll', onScroll);
       scheme.removeEventListener('change', onScheme);
-      document.documentElement.classList.remove('dot-canvas');
+      owner.classList.remove('dot-canvas');
       canvas.remove();
     },
   };

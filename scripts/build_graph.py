@@ -124,7 +124,9 @@ SRK_HARD_BANNED = [
     849343,  # Dilwale Dulhania Le Jayenge
     330663,  # My Name Is Khan
 ]
-# Bollywood mode's stars: what free play heads for there, Shah Rukh Khan first.
+# Bollywood mode's stars: what free play heads for there, Shah Rukh Khan first, then twenty
+# others, as many as JT's page has. They're free play's only, so unlike TARGETS they need no
+# first day.
 BOLLYWOOD_TARGETS = [
     9535,  # Shah Rukh Khan
     9570,  # Amitabh Bachchan
@@ -136,6 +138,17 @@ BOLLYWOOD_TARGETS = [
     159178,  # Deepika Padukone
     233619,  # Hrithik Roshan
     184885,  # Kareena Kapoor
+    147395,  # Kajol
+    232451,  # Madhuri Dixit
+    270691,  # Sridevi
+    485557,  # Rani Mukerji
+    9550,  # Katrina Kaif
+    233748,  # Akshay Kumar
+    146929,  # Ajay Devgn
+    1063412,  # Ranbir Kapoor
+    902879,  # Ranveer Singh
+    360927,  # Irrfan Khan
+    55407,  # Raj Kapoor
 ]
 # Bollywood's own stars, the Bollywood daily's starts: famous, with most of their films in
 # Hindi (or Urdu). Their best-known films and the answer path must be recognisable, as for

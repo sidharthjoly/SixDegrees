@@ -5,7 +5,9 @@
  * Bollywood mode keeps the look in its own colours (below).
  */
 
-:root {
+/* JT's colours are also the card on Bollywood mode's home page that leads back to them. */
+:root,
+.world-hollywood {
   color-scheme: light;
   --bg: #b9b4ff;
   --bg-dot: #a29cf7;
@@ -21,8 +23,6 @@
   --divider: #d9d6ee;
   --lime: #c6ff3d;
   --pink: #ff3d9a;
-  /* The way into Bollywood mode from JT's page, always with dark text, like the lime and pink. */
-  --saffron: #ffb23f;
   /* Buttons and highlights, and the text on the dark strips (ticker, pills, meters): lime,
      like JT's own colour, which stays lime in Bollywood mode while these change. */
   --accent: #c6ff3d;
@@ -31,6 +31,11 @@
   /* Bollywood's dailies, in the archive and on the play screen. */
   --bolly: #ffb23f;
   --bolly-hard: #ff3d9a;
+  /* JT's dots never light up (Bollywood mode's do): said here so his card inside Bollywood
+     mode's page doesn't inherit its lights. */
+  --dot-on-1: none;
+  --dot-on-2: none;
+  --dot-on-3: none;
   --soft: #fff7a8;
   --block: #111111;
   --block-ink: #c6ff3d;
@@ -43,7 +48,8 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root,
+  .world-hollywood {
     color-scheme: dark;
     --bg: #1b1745;
     --bg-dot: #2b2569;
@@ -65,10 +71,12 @@
 
 /*
  * Bollywood mode is Marigold: marigold garlands, rani pink and turquoise, with deep maroon at
- * night. ui/shell.ts sets data-world on the root for it. On the home page its dots light up
- * warm yellow under the cursor (--dot-on-*, read by ui/homefx.ts).
+ * night. ui/shell.ts sets data-world on the root for it, and the card on JT's home page that
+ * leads to it is in it too. On the home page its dots light up warm yellow under the cursor
+ * (--dot-on-*, read by ui/homefx.ts).
  */
-:root[data-world='bollywood'] {
+:root[data-world='bollywood'],
+.world-bollywood {
   --bg: #ffbf57;
   --bg-dot: #f5a52e;
   --ink: #2b0a12;
@@ -97,7 +105,8 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root[data-world='bollywood'] {
+  :root[data-world='bollywood'],
+  .world-bollywood {
     --bg: #3a0b1d;
     --bg-dot: #551331;
     --ink: #fff0e3;

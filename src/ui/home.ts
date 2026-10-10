@@ -46,24 +46,38 @@ const SRK_NAME = 'Shah Rukh Khan';
 let introDone = false;
 
 /**
- * The way to the other world: Bollywood mode from JT's page, and back again. Only the home
- * page changes; links name their own puzzle, so one shared from either world opens the same
- * game for anyone.
+ * The way to the other world, under the daily: Bollywood mode from JT's page, and back again,
+ * on a card in that world's colours. Only the home page changes; links name their own puzzle,
+ * so one shared from either world opens the same game for anyone. JT's page goes without when
+ * the data has no Bollywood mode.
  */
-function worldSwitch(world: World): HTMLElement {
+function worldCard(world: World, meta: Meta, bollywood: BollywoodFile | null): HTMLElement | null {
   const other: World = world === 'bollywood' ? 'hollywood' : 'bollywood';
-  return h(
-    'button',
-    {
-      type: 'button',
-      class: `chip world-switch to-${other}`,
-      onclick: () => {
-        saveWorld(other);
-        go(href({ name: 'home' }));
-      },
-    },
-    other === 'bollywood' ? 'Bollywood mode →' : '← JT mode',
-  );
+  if (other === 'bollywood' && !bollywood) return null;
+  const card = (tag: string, title: string, text: string, button: string) =>
+    h(
+      'section',
+      { class: `world-card world-${other}`, 'aria-labelledby': 'world-card-title' },
+      h('span', { class: 'world-card-tag' }, tag),
+      h('h2', { class: 'world-card-title', id: 'world-card-title' }, title),
+      h('p', null, text),
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'btn primary',
+          onclick: () => {
+            saveWorld(other);
+            go(href({ name: 'home' }));
+            window.scrollTo({ top: 0 });
+          },
+        },
+        button,
+      ),
+    );
+  return bollywood && other === 'bollywood'
+    ? card('New', `Six Degrees of ${SRK_NAME}`, `A Bollywood daily, a hard mode and ${bollywood.stars.toLocaleString()} stars, linked through ${bollywood.films.toLocaleString()} Hindi films.`, 'Try Bollywood mode')
+    : card('The original', 'Six Degrees of Justin Timberlake', `${meta.people.toLocaleString()} people, a daily that ends on Justin, and a star daily for everyone else.`, 'Back to JT mode');
 }
 
 export async function renderHome(gen: number): Promise<void> {
@@ -76,7 +90,8 @@ export async function renderHome(gen: number): Promise<void> {
   const [daily, star, bollywood, bolly] = await Promise.all([
     world === 'hollywood' ? getPerson(dailyPick(meta.daily, day)) : null,
     world === 'hollywood' ? dailyStar(day).catch(() => null) : null,
-    world === 'bollywood' ? loadBollywood().catch(() => null) : null,
+    // Both worlds: JT's page has the card into Bollywood mode.
+    loadBollywood().catch(() => null),
     world === 'bollywood' ? dailyBollywood(day).catch(() => null) : null,
   ]);
   const bollyStart = bolly && (await getPerson(bolly.start).catch(() => null));
@@ -85,7 +100,7 @@ export async function renderHome(gen: number): Promise<void> {
     const rec = loadDaily(day, mode);
     return rec?.start === start && rec.target === target ? rec : null;
   };
-  tickerSlot.replaceChildren(ticker(meta, bollywood));
+  tickerSlot.replaceChildren(ticker(meta, world === 'bollywood' ? bollywood : null));
   const main: Child[] =
     world === 'bollywood'
       ? [
@@ -136,7 +151,7 @@ export async function renderHome(gen: number): Promise<void> {
   const home = h(
     'div',
     { class: 'home' + (introDone ? '' : ' intro') },
-    h('div', { class: 'home-main' }, worldSwitch(world), ...main, groupsCard() ?? '', startCard(meta, world, bollywood)),
+    h('div', { class: 'home-main' }, ...main, worldCard(world, meta, bollywood) ?? '', groupsCard() ?? '', startCard(meta, world, bollywood)),
     h(
       'div',
       { class: 'home-side' },
@@ -357,8 +372,8 @@ function pickStars(n: number, list: [Qid, string][] = STAR_PICKS, random = Math.
   return pool.slice(0, n);
 }
 
-/** The star the switch last turned to this visit, so turning it back on returns to them. */
-let lastStar: Qid | undefined;
+/** The star each world's switch last turned to this visit, so turning it back on returns to them. */
+const lastStar: Partial<Record<World, Qid>> = {};
 
 function startCard(meta: Meta, world: World, bollywood: BollywoodFile | null): HTMLElement {
   const results = h('ul', { class: 'results', id: 'search-results' });
@@ -371,10 +386,13 @@ function startCard(meta: Meta, world: World, bollywood: BollywoodFile | null): H
   const stars = meta.targets.filter((t) => (t.world ?? 'hollywood') === world);
   const saved = loadTarget(world);
   /**
-   * The other star free play heads for; undefined for JT. Bollywood mode always heads for one
-   * of its stars. A rebuild may have dropped a saved one.
+   * Who each world is built around, free play's default: JT (no target), or in Bollywood mode
+   * Shah Rukh Khan, one of its stars. The switch offers the rest as "Another star".
    */
-  let target = stars.find((t) => t.id === saved)?.id ?? (world === 'bollywood' ? stars[0]?.id : undefined);
+  const homeStar = world === 'bollywood' ? { name: SRK_NAME, target: bollywood?.goal ?? stars[0]?.id } : { name: 'Justin Timberlake', target: undefined };
+  const others = stars.filter((t) => t.id !== homeStar.target);
+  /** The star free play heads for; undefined for JT. A rebuild may have dropped a saved one. */
+  let target = stars.find((t) => t.id === saved)?.id ?? homeStar.target;
   const playHref = (qid: Qid) => href({ name: 'play', qid, mode: 'normal', vs: null, target });
 
   const show = (q: string) => {
@@ -453,19 +471,14 @@ function startCard(meta: Meta, world: World, bollywood: BollywoodFile | null): H
   return h(
     'section',
     { class: 'card' },
-    stars.length > 0 &&
-      goalSwitch(
-        stars,
-        target,
-        (id) => {
-          target = id;
-          if (id && world === 'hollywood') lastStar = id;
-          saveTarget(id ?? null, world);
-          drawChips();
-          show(input.value);
-        },
-        world === 'hollywood',
-      ),
+    others.length > 0 &&
+      goalSwitch(others, homeStar, target, () => lastStar[world], (id) => {
+        target = id;
+        if (id !== homeStar.target) lastStar[world] = id;
+        saveTarget(id ?? null, world);
+        drawChips();
+        show(input.value);
+      }),
     h('label', { class: 'label', for: 'start-search' }, 'Free play: pick any star'),
     input,
     results,
@@ -474,30 +487,40 @@ function startCard(meta: Meta, world: World, bollywood: BollywoodFile | null): H
 }
 
 /**
- * Free play's switch: head for JT, as the game is built around, or for one of the other stars.
- * (The daily has its own way to another star: the star daily.) Without `withJT`, as in
- * Bollywood mode, it's just the menu of stars.
+ * Free play's switch: head for the star the world is built around (JT, or in Bollywood mode
+ * Shah Rukh Khan), or for one of its other stars, from a menu shown only then. (The daily has
+ * its own way to another star: the star daily.) `recall` is the other star last chosen.
  */
-function goalSwitch(stars: Target[], initial: Qid | undefined, onChange: (target: Qid | undefined) => void, withJT: boolean): HTMLElement {
+function goalSwitch(
+  stars: Target[],
+  home: { name: string; target: Qid | undefined },
+  initial: Qid | undefined,
+  recall: () => Qid | undefined,
+  onChange: (target: Qid | undefined) => void,
+): HTMLElement {
   let target = initial;
+  const atHome = () => target === home.target;
   const toggle = (label: string, choose: () => void) => h('button', { type: 'button', class: 'chip', onclick: choose }, label);
-  const jt = toggle('Justin Timberlake', () => set(undefined));
-  const other = toggle('Another star', () => set(target ?? lastStar ?? stars[0].id));
+  const homeChip = toggle(home.name, () => set(home.target));
+  const other = toggle('Another star', () => {
+    const last = recall();
+    set(stars.some((t) => t.id === last) ? last : stars[0].id);
+  });
   const menu = dropdown({
     id: 'goal-star',
     labelledBy: 'goal-label',
     items: stars.map((t) => ({ value: t.id, label: t.name, sub: `Known for ${t.film}` })),
-    value: target ?? stars[0].id,
+    value: stars.find((t) => t.id === target)?.id ?? stars[0].id,
     onChange: (id) => set(id),
   });
   const known = h('em');
   const pick = h('div', { class: 'goal-pick' }, menu.el, h('span', { class: 'muted' }, 'Known for ', known));
 
   const sync = () => {
-    jt.classList.toggle('on', !target);
-    jt.setAttribute('aria-pressed', String(!target));
-    other.classList.toggle('on', !!target);
-    other.setAttribute('aria-pressed', String(!!target));
+    homeChip.classList.toggle('on', atHome());
+    homeChip.setAttribute('aria-pressed', String(atHome()));
+    other.classList.toggle('on', !atHome());
+    other.setAttribute('aria-pressed', String(!atHome()));
     const star = stars.find((t) => t.id === target);
     pick.hidden = !star;
     if (star) {
@@ -516,7 +539,7 @@ function goalSwitch(stars: Target[], initial: Qid | undefined, onChange: (target
     'div',
     { class: 'goal-switch' },
     h('p', { class: 'label', id: 'goal-label' }, 'Heading for'),
-    withJT && h('div', { class: 'chips', role: 'group', 'aria-labelledby': 'goal-label' }, jt, other),
+    h('div', { class: 'chips', role: 'group', 'aria-labelledby': 'goal-label' }, homeChip, other),
     pick,
   );
 }

@@ -125,29 +125,68 @@
   letter-spacing: 0.12em;
 }
 
-/* Bollywood mode: the daily's sticker in its own colour, and the switch between the two worlds. */
+/* Bollywood mode's daily sticker, in its own colour. */
 .sticker.bollywood::before {
   background: var(--bolly);
 }
 
-/* Each in the colour of the mode it leads to. */
-.world-switch {
-  margin: 0 0 14px;
+/*
+ * The way to the other world: a card in that world's own colours (.world-bollywood or
+ * .world-hollywood, base.css), dot grid and all, like a window into it.
+ */
+.world-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 22px;
+  padding: 20px;
+  border: 3px solid var(--line);
+  border-radius: 20px;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--bg-dot) 2px, transparent 2px);
+  background-size: 28px 28px;
+  box-shadow: 6px 6px 0 var(--shadow);
+  color: var(--ink);
 }
 
-.world-switch.to-bollywood {
-  background: var(--saffron);
-  color: #111111;
+.world-card-tag {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--strip);
+  color: var(--strip-ink);
+  font-family: var(--display);
+  font-size: 11px;
+  text-transform: uppercase;
 }
 
-.world-switch.to-hollywood {
-  background: var(--lime);
-  color: #111111;
+.world-card-title {
+  margin: 2px 0 0;
+  color: #ffffff;
+  font-family: var(--display);
+  font-size: clamp(20px, 5cqi, 26px);
+  font-weight: 400;
+  line-height: 1.1;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  text-shadow:
+    -1.5px -1.5px 0 #111111,
+    1.5px -1.5px 0 #111111,
+    -1.5px 1.5px 0 #111111,
+    1.5px 1.5px 0 #111111,
+    3px 3px 0 #111111;
 }
 
-.heading-for {
-  margin: 0 0 14px;
-  font-size: 17px;
+.world-card p {
+  max-width: 34em;
+  margin: 0;
+}
+
+.world-card .btn {
+  margin-top: 6px;
 }
 
 /* ------------------------------------------------------------ free play's star switch */
@@ -508,6 +547,7 @@
    * (--lx/--ly run from -1 to 1 across the window).
    */
   .home.fx-light .card,
+  .home.fx-light .world-card,
   .home.fx-light .track {
     box-shadow: calc(5px - var(--lx, 0) * 3px) calc(5px - var(--ly, 0) * 3px) 0 var(--shadow);
   }
@@ -540,4 +580,18 @@ html.dot-canvas body {
 .dot-field ~ main {
   position: relative;
   z-index: 1;
+}
+
+/* The card's own dots, when they bend and light up under the cursor (ui/homefx.ts). */
+.dot-field-card {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.world-card.dot-canvas {
+  background-image: none;
 }
