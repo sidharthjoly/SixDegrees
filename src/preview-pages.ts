@@ -2,7 +2,8 @@
  * Static pages for link previews. Preview crawlers (WhatsApp, iMessage, Slack…) ignore
  * everything after the #, so a shared #/daily/<date> link would only ever unfurl as the
  * home page. The build (scripts/previews.ts) writes d/<date>/index.html for each daily: the
- * game's page with that day's Open Graph tags, which starts the game in place.
+ * game's page with that day's Open Graph tags, which starts the game in place. Hard mode's
+ * page is d/<date>/hard/, the star daily's d/<date>/star/.
  *
  * Pure string building with no imports, so Node can load it by type stripping and vitest can
  * test it without data.
@@ -11,7 +12,7 @@
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 86_400_000;
 
-export type PreviewMode = 'normal' | 'hard';
+export type PreviewMode = 'normal' | 'hard' | 'star';
 
 /** SITE_URL with exactly one trailing slash, so paths can be appended. Rejects anything but http(s). */
 export function normalizeSite(raw: string): string {
@@ -53,11 +54,14 @@ export function escapeHtml(s: string): string {
 /** Where a daily's page lives, relative to the site root. */
 export function pagePath(day: string, mode: PreviewMode): string {
   if (!DAY_RE.test(day)) throw new Error(`Bad day ${day}`);
-  return `d/${day}/` + (mode === 'hard' ? 'hard/' : '');
+  return `d/${day}/` + (mode === 'normal' ? '' : `${mode}/`);
 }
 
-/** One preview image per day, shared by both modes: it shows the day's star, not the par. */
-export const imagePath = (day: string) => `og/${day}.png`;
+/**
+ * A day's preview image. The JT daily's is shared by both its modes: it shows the day's start,
+ * not the par. The star daily's names its star instead of JT.
+ */
+export const imagePath = (day: string, mode: PreviewMode = 'normal') => `og/${day}${mode === 'star' ? '-star' : ''}.png`;
 
 /** "../../" from d/<date>/, "../../../" from d/<date>/hard/: relative, so any base path works. */
 export function rootPrefix(path: string): string {
@@ -65,7 +69,7 @@ export function rootPrefix(path: string): string {
 }
 
 /** The game's own hash route for a daily (see src/router.ts). */
-export const dailyRoute = (day: string, mode: PreviewMode) => `#/daily/${day}` + (mode === 'hard' ? '/hard' : '');
+export const dailyRoute = (day: string, mode: PreviewMode) => `#/daily/${day}` + (mode === 'normal' ? '' : `/${mode}`);
 
 export interface DailyPage {
   /** Normalized site URL, with a trailing slash. */
@@ -76,18 +80,26 @@ export interface DailyPage {
   mode: PreviewMode;
   name: string;
   par: number;
+  /** The star daily's star. */
+  star?: { id: number; name: string };
 }
 
 export const IMAGE_WIDTH = 1200;
 export const IMAGE_HEIGHT = 630;
 
-export function dailyTitle(p: Pick<DailyPage, 'number' | 'mode'>): string {
-  return `Six Degrees of JT #${p.number}` + (p.mode === 'hard' ? ' (hard)' : '');
+export function dailyTitle(p: Pick<DailyPage, 'number' | 'mode' | 'star'>): string {
+  return `Six Degrees of ${p.star?.name ?? 'JT'} #${p.number}` + (p.mode === 'hard' ? ' (hard)' : '');
 }
 
-export function dailyDescription(p: Pick<DailyPage, 'name' | 'par'>): string {
-  return `Connect ${p.name} to Justin Timberlake. Par ${p.par}.`;
+export function dailyDescription(p: Pick<DailyPage, 'name' | 'par' | 'star'>): string {
+  return `Connect ${p.name} to ${p.star?.name ?? 'Justin Timberlake'}. Par ${p.par}.`;
 }
+
+/**
+ * The tag on a star daily's page that names its star, first among its preview tags: the
+ * Worker reads it before the title, to write a challenge's title (worker/index.ts).
+ */
+export const STAR_TAG = 'sixdegrees-star';
 
 /** The markers in index.html around the tags each daily's page swaps for its own. */
 export const TAGS_START = '<!-- preview-tags -->';
@@ -106,14 +118,15 @@ export function dailyPage(p: DailyPage, app: string): string {
   const title = dailyTitle(p);
   const description = dailyDescription(p);
   const url = p.site + path;
-  const image = p.site + imagePath(p.day);
-  const alt = `Daily #${p.number}: a pink sticker reading ${p.name}`;
+  const image = p.site + imagePath(p.day, p.mode);
+  const alt = `Daily #${p.number}: a pink sticker reading ${p.name}` + (p.star ? `, heading for ${p.star.name}` : '');
   const a = escapeHtml;
   const start = app.indexOf(TAGS_START);
   const end = app.indexOf(TAGS_END);
   if (start < 0 || end < start) throw new Error('index.html has lost its preview-tags markers');
   if (!app.includes('<head>')) throw new Error('index.html has no <head>');
-  const tags = `${TAGS_START}
+  const star = p.star ? `\n<meta name="${STAR_TAG}" content="${p.star.id}" data-name="${a(p.star.name)}">` : '';
+  const tags = `${TAGS_START}${star}
 <title>${a(title)}</title>
 <meta name="description" content="${a(description)}">
 <link rel="canonical" href="${a(url)}">
@@ -142,8 +155,8 @@ ${TAGS_END}`;
   return page.replace('<head>', `<head>\n    ${head}`);
 }
 
-/** A daily page's URL path: [1] the site root, [2] the date, [3] "/hard" for hard mode. */
-export const DAILY_PATH_RE = /^(.*?\/)d\/(\d{4}-\d{2}-\d{2})(\/hard)?\/?$/;
+/** A daily page's URL path: [1] the site root, [2] the date, [3] "/hard" for hard mode or "/star" for the star daily. */
+export const DAILY_PATH_RE = /^(.*?\/)d\/(\d{4}-\d{2}-\d{2})(\/hard|\/star)?\/?$/;
 
 /*
  * GitHub Pages serves 404.html for any missing path. A daily link newer than the last
@@ -163,7 +176,7 @@ export function notFoundPage(): string {
 <title>Six Degrees of Justin Timberlake</title>
 <script>
 var m = location.pathname.match(${DAILY_PATH_RE});
-if (m) location.replace(location.origin + m[1] + "#/daily/" + m[2] + (m[3] ? "/hard" : "") + location.search);
+if (m) location.replace(location.origin + m[1] + "#/daily/" + m[2] + (m[3] || "") + location.search);
 </script>
 <style>${PAGE_CSS}</style>
 </head>

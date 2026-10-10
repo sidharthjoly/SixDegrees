@@ -1,5 +1,7 @@
 import { DAILY_PAGE_RE, challengeTitle } from '../src/challenge-preview';
 import { handleWrite, type GateEnv } from '../src/gate';
+import { STAR_TAG } from '../src/preview-pages';
+import type { Mode } from '../src/types';
 
 /*
  * A Cloudflare Worker with two jobs on sixdegrees.sidharthjoly.com.
@@ -11,7 +13,8 @@ import { handleWrite, type GateEnv } from '../src/gate';
  * A "beat my score" link is a daily's page plus ?vs=<code>, and GitHub Pages serves the same
  * page whatever the query, so every challenge unfurled as the plain daily. For a valid code
  * this rewrites the page's title tags with the sender's score ("Sid got to JT in 3 films.
- * Can you beat that?") and its URL tags with the full link. The image stays the day's.
+ * Can you beat that?") and its URL tags with the full link. The image stays the day's. A star
+ * daily's page names its star in a tag ahead of its title, which the title is written from.
  *
  * Anything else passes straight through, and so does any page if this throws: the worst case
  * is the old, generic preview. Rewriting streams the page, well inside the free plan's CPU time.
@@ -39,18 +42,35 @@ export default {
       const page = DAILY_PAGE_RE.exec(url.pathname);
       const vs = url.searchParams.get('vs');
       if (request.method !== 'GET' || !page || !vs || !response.ok || !response.headers.get('content-type')?.startsWith('text/html')) return response;
-      const title = challengeTitle(vs, page[1] ? 'hard' : 'normal');
-      if (!title) return response;
+      const mode = (page[1] as Mode | undefined) ?? 'normal';
+      // The title is worked out when the rewriter first needs it: on a star daily's page, after
+      // the tag naming the star.
+      let star: { id: number; name: string } | undefined;
+      let title: string | null | undefined;
+      const titleNow = () => (title === undefined ? (title = challengeTitle(vs, mode, star)) : title);
+      if (mode !== 'star' && !titleNow()) return response;
       // The page's own URL tags are https; keep them so whatever scheme the request came in on.
       url.protocol = 'https:';
-      // Names are letters, digits, spaces and ' ’ . - (challenge-code.ts), so they're safe in an attribute.
-      const content = (value: string) => ({ element: (e: Element) => void e.setAttribute('content', value) });
+      // Challengers' names are letters, digits, spaces and ' ’ . - (challenge-code.ts), and the
+      // star's is kept to the same, so they're safe in an attribute.
+      const valid = (set: (e: Element, title: string) => void) => ({
+        element: (e: Element) => {
+          const t = titleNow();
+          if (t) set(e, t);
+        },
+      });
       return new HTMLRewriter()
-        .on('title', { element: (e) => void e.setInnerContent(title) })
-        .on('meta[property="og:title"]', content(title))
-        .on('meta[name="twitter:title"]', content(title))
-        .on('meta[property="og:url"]', content(url.href))
-        .on('link[rel="canonical"]', { element: (e) => void e.setAttribute('href', url.href) })
+        .on(`meta[name="${STAR_TAG}"]`, {
+          element: (e) => {
+            const name = (e.getAttribute('data-name') ?? '').replace(/[^\p{L}\p{M}\p{N} '’.-]/gu, '');
+            star = { id: Number(e.getAttribute('content')), name };
+          },
+        })
+        .on('title', valid((e, t) => void e.setInnerContent(t)))
+        .on('meta[property="og:title"]', valid((e, t) => void e.setAttribute('content', t)))
+        .on('meta[name="twitter:title"]', valid((e, t) => void e.setAttribute('content', t)))
+        .on('meta[property="og:url"]', valid((e) => void e.setAttribute('content', url.href)))
+        .on('link[rel="canonical"]', valid((e) => void e.setAttribute('href', url.href)))
         .transform(response);
     } catch {
       return response;

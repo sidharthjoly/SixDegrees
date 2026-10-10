@@ -4,6 +4,8 @@
  *   dist/og/<date>.png             the day's sticker, 1200×630, drawn by src/card.ts
  *   dist/d/<date>/index.html       the game's page with that day's Open Graph tags
  *   dist/d/<date>/hard/index.html  the same for hard mode
+ *   dist/og/<date>-star.png        the star daily's (the day's start, heading for its star)
+ *   dist/d/<date>/star/index.html  the star daily's page
  * plus dist/og/home.png for the home page, dist/404.html, and the absolute URLs in
  * dist/index.html's preview tags.
  *
@@ -18,9 +20,9 @@ import { availableParallelism } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { drawPreviewCard, PREVIEW_HEIGHT, PREVIEW_WIDTH, type PreviewCard } from '../src/card.ts';
-import { EPOCH, dailyPick, dayNumber } from '../src/logic.ts';
+import { EPOCH, dailyPick, dayNumber, starOfDay } from '../src/logic.ts';
 import { dailyPage, displaySite, imagePath, normalizeSite, notFoundPage, pagePath, previewDays, shortDate, type PreviewMode } from '../src/preview-pages.ts';
-import type { Meta, PersonRow, Qid } from '../src/types.ts';
+import type { Meta, PersonRow, Qid, TargetRow } from '../src/types.ts';
 
 /** The site rebuilds at least monthly; pages this far ahead cover links shared until the next build. */
 const AHEAD_DAYS = 45;
@@ -86,6 +88,8 @@ function imageWriter(): { add(path: string, card: PreviewCard): Promise<void>; d
 interface DataFiles {
   meta: Meta;
   person(id: Qid): PersonRow;
+  /** A person's row towards one of the other stars, or undefined. */
+  toward(star: Qid, id: Qid): TargetRow | undefined;
 }
 
 /** The data `vite build` copied into dist, the same files the deployed game reads. */
@@ -96,8 +100,18 @@ function loadData(): DataFiles | null {
   const base = join(DIST, 'data/v', version);
   const meta = JSON.parse(readFileSync(join(base, 'meta.json'), 'utf8')) as Meta;
   const shards = new Map<number, Record<string, PersonRow>>();
+  const starShards = new Map<string, Record<string, TargetRow>>();
   return {
     meta,
+    toward(star, id) {
+      const file = join(base, `t/${star}/${id % meta.targetShards}.json`);
+      let shard = starShards.get(file);
+      if (!shard) {
+        shard = JSON.parse(readFileSync(file, 'utf8')) as Record<string, TargetRow>;
+        starShards.set(file, shard);
+      }
+      return shard[id];
+    },
     person(id) {
       const k = id % meta.shards;
       let shard = shards.get(k);
@@ -153,8 +167,10 @@ async function main(): Promise<void> {
 
   const lookback = new Date(Date.parse(`${today}T00:00:00Z`) - BEHIND_DAYS * 86_400_000).toISOString().slice(0, 10);
   const days = previewDays(lookback > EPOCH ? lookback : EPOCH, today, AHEAD_DAYS);
+  let starDays = 0;
   for (const day of days) {
-    const [name, , dist, , , , hardDist] = data.person(dailyPick(data.meta.daily, day));
+    const start = dailyPick(data.meta.daily, day);
+    const [name, , dist, , , , hardDist] = data.person(start);
     const number = dayNumber(day);
     // The image is the same for both modes (it shows the date, not the par), so one per day.
     await images.add(imagePath(day), {
@@ -171,10 +187,34 @@ async function main(): Promise<void> {
       if (par < 0) continue;
       write(pagePath(day, mode) + 'index.html', dailyPage({ site, day, number, mode, name, par }, app));
     }
+    // The star daily, picked as the game and the Worker pick it.
+    const targets = data.meta.targets ?? [];
+    const found = await starOfDay(
+      targets.map((t) => t.id),
+      day,
+      start,
+      async (s) => {
+        const row = data.toward(s, start);
+        return row && row[0] >= 0 ? row[0] : Infinity;
+      },
+    );
+    const star = found && targets.find((t) => t.id === found.id);
+    if (!found || !star) continue;
+    starDays++;
+    await images.add(imagePath(day, 'star'), {
+      tag: `Daily #${number}`,
+      name,
+      foot: shortDate(day),
+      pills: [`Daily #${number}`, 'Star daily'],
+      blurb: `Connect ${name} to ${star.name} through the films they share.`,
+      site: footer,
+      goal: star.name,
+    });
+    write(pagePath(day, 'star') + 'index.html', dailyPage({ site, day, number, mode: 'star', name, par: found.par, star: { id: star.id, name: star.name } }, app));
   }
   await images.done();
   const seconds = ((performance.now() - started) / 1000).toFixed(1);
-  console.log(`previews: ${days.length} dailies (${days[0]} to ${days.at(-1)}) for ${site} in ${seconds}s`);
+  console.log(`previews: ${days.length} dailies (${days[0]} to ${days.at(-1)}), ${starDays} with a star daily, for ${site} in ${seconds}s`);
 }
 
 await main();

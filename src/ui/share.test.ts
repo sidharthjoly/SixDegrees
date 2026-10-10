@@ -28,8 +28,9 @@ describe('puzzlePath', () => {
     expect(puzzlePath({ day: null, start: 615, mode: 'normal' }, true)).toBe('#/p/615');
   });
 
-  it('keeps the star daily on its hash route, so it never opens the JT daily’s page', () => {
-    expect(puzzlePath({ ...daily, mode: 'star', target: 3454165 }, true)).toBe('#/daily/2026-10-19/star');
+  it('links the star daily to its own page, never the JT daily’s', () => {
+    expect(puzzlePath({ ...daily, mode: 'star', target: 3454165 }, true)).toBe('d/2026-10-19/star/');
+    expect(puzzlePath({ ...daily, mode: 'star', target: 3454165 }, false)).toBe('#/daily/2026-10-19/star');
   });
 
   it('keeps the star in free play towards another star', () => {

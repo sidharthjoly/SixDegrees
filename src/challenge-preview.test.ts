@@ -45,12 +45,22 @@ describe('challengeTitle', () => {
   it('ignores codes for free play towards another star', () => {
     expect(challengeTitle(code({ target: 3454165 }), 'normal')).toBeNull();
   });
+
+  it('names the star on a star daily’s page, taking only codes heading for them', () => {
+    const meryl = { id: 873, name: 'Meryl Streep' };
+    expect(challengeTitle(code({ target: 873 }), 'star', meryl)).toBe('Sid got to Meryl Streep in 3 films. Can you beat that?');
+    expect(challengeTitle(code({ target: 873, gaveUp: true, moves: [] }), 'star', meryl)).toBe('Sid gave up straight away. Can you get to Meryl Streep?');
+    expect(challengeTitle(code({ target: 3454165 }), 'star', meryl)).toBeNull();
+    expect(challengeTitle(code(), 'star', meryl)).toBeNull();
+    expect(challengeTitle(code({ target: 873 }), 'star')).toBeNull();
+  });
 });
 
 describe('DAILY_PAGE_RE', () => {
   it('matches daily preview pages only', () => {
     expect(DAILY_PAGE_RE.exec('/d/2026-10-08/')?.[1]).toBeUndefined();
-    expect(DAILY_PAGE_RE.exec('/d/2026-10-08/hard/')?.[1]).toBe('hard/');
-    for (const other of ['/d/2026-10-08', '/d/2026-10-08/index.html', '/d/x/', '/', '/og/2026-10-08.png']) expect(DAILY_PAGE_RE.test(other)).toBe(false);
+    expect(DAILY_PAGE_RE.exec('/d/2026-10-08/hard/')?.[1]).toBe('hard');
+    expect(DAILY_PAGE_RE.exec('/d/2026-10-08/star/')?.[1]).toBe('star');
+    for (const other of ['/d/2026-10-08', '/d/2026-10-08/index.html', '/d/x/', '/', '/og/2026-10-08.png', '/d/2026-10-08/easy/', '/d/2026-10-08/hard/star/']) expect(DAILY_PAGE_RE.test(other)).toBe(false);
   });
 });

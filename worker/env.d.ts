@@ -2,6 +2,7 @@
 // @cloudflare/workers-types for one class.
 
 interface Element {
+  getAttribute(name: string): string | null;
   setAttribute(name: string, value: string): Element;
   setInnerContent(content: string, options?: { html?: boolean }): Element;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EPOCH } from './logic';
-import { DAILY_PATH_RE, TAGS_END, TAGS_START, dailyPage, displaySite, escapeHtml, normalizeSite, notFoundPage, pagePath, previewDays, rootPrefix, shortDate } from './preview-pages';
+import { DAILY_PATH_RE, STAR_TAG, TAGS_END, TAGS_START, dailyPage, displaySite, escapeHtml, imagePath, normalizeSite, notFoundPage, pagePath, previewDays, rootPrefix, shortDate } from './preview-pages';
 
 describe('normalizeSite', () => {
   it('ends with exactly one slash', () => {
@@ -57,6 +57,7 @@ describe('page paths', () => {
   it('nests hard mode under the day', () => {
     expect(pagePath('2026-10-08', 'normal')).toBe('d/2026-10-08/');
     expect(pagePath('2026-10-08', 'hard')).toBe('d/2026-10-08/hard/');
+    expect(pagePath('2026-10-08', 'star')).toBe('d/2026-10-08/star/');
     expect(() => pagePath('../../etc', 'normal')).toThrow();
   });
 
@@ -128,6 +129,22 @@ describe('dailyPage', () => {
     expect(hard).toContain('Par 4.');
   });
 
+  it('gives the star daily its own page and image, naming the star ahead of the title for the Worker', () => {
+    const star = dailyPage({ site, day: '2026-10-19', number: 12, mode: 'star', name: 'Pelé', par: 2, star: { id: 873, name: 'Meryl Streep' } }, app);
+    expect(star).toContain('<title>Six Degrees of Meryl Streep #12</title>');
+    expect(star).toContain('<meta property="og:url" content="https://sixdegrees.sidharthjoly.com/d/2026-10-19/star/">');
+    expect(star).toContain('<meta property="og:image" content="https://sixdegrees.sidharthjoly.com/og/2026-10-19-star.png">');
+    expect(star).toContain('<meta name="description" content="Connect Pelé to Meryl Streep. Par 2.">');
+    expect(star).toContain(`history.replaceState(null, '', "#/daily/2026-10-19/star" + location.search)`);
+    expect(star).toContain('<base href="../../../">');
+    const tag = `<meta name="${STAR_TAG}" content="873" data-name="Meryl Streep">`;
+    expect(star.indexOf(tag)).toBeGreaterThan(0);
+    expect(star.indexOf(tag)).toBeLessThan(star.indexOf('<title>'));
+    expect(page).not.toContain(STAR_TAG);
+    expect(imagePath('2026-10-19')).toBe('og/2026-10-19.png');
+    expect(imagePath('2026-10-19', 'hard')).toBe('og/2026-10-19.png');
+  });
+
   it('refuses a page that has lost its markers, rather than publish the home page\'s tags', () => {
     expect(() => dailyPage({ site, day: '2026-10-19', number: 12, mode: 'normal', name: 'Pelé', par: 3 }, app.replace(TAGS_END, ''))).toThrow(/markers/);
   });
@@ -138,6 +155,7 @@ describe('notFoundPage', () => {
     expect(notFoundPage()).toContain(String(DAILY_PATH_RE));
     expect('/d/2027-03-01/'.match(DAILY_PATH_RE)?.slice(1)).toEqual(['/', '2027-03-01', undefined]);
     expect('/repo/d/2027-03-01/hard'.match(DAILY_PATH_RE)?.slice(1)).toEqual(['/repo/', '2027-03-01', '/hard']);
+    expect('/d/2027-03-01/star/'.match(DAILY_PATH_RE)?.slice(1)).toEqual(['/', '2027-03-01', '/star']);
     expect('/d/2027-03-01/extra/'.match(DAILY_PATH_RE)).toBeNull();
     expect('/nothing-here'.match(DAILY_PATH_RE)).toBeNull();
   });
@@ -154,6 +172,7 @@ describe('notFoundPage', () => {
   it('forwards to the game on this site', () => {
     expect(redirect('/d/2027-03-01/', '?vs=abc')).toEqual(['https://sixdegrees.example/#/daily/2027-03-01?vs=abc']);
     expect(redirect('/repo/d/2027-03-01/hard/')).toEqual(['https://sixdegrees.example/repo/#/daily/2027-03-01/hard']);
+    expect(redirect('/d/2027-03-01/star/', '?vs=abc')).toEqual(['https://sixdegrees.example/#/daily/2027-03-01/star?vs=abc']);
     expect(redirect('/nothing-here')).toEqual([]);
   });
 

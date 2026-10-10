@@ -4,6 +4,7 @@ import { displaySite, pagePath } from '../preview-pages';
 import { href } from '../router';
 import type { Mode, Qid } from '../types';
 import { h } from './dom';
+import { onLeave } from './leave';
 import type { ResultContext } from './result';
 
 /** The site's root, without the hash or a file name, e.g. https://sixdegrees.sidharthjoly.com/. */
@@ -21,12 +22,11 @@ export interface Puzzle {
 
 /**
  * The part of a puzzle link after the site root. With `staticPages` (production builds) a
- * JT daily links to its page under d/<date>/, which carries that day's link-preview tags and
- * forwards to the game (scripts/previews.ts); otherwise, star dailies included, it's the hash
- * route.
+ * daily links to its page under d/<date>/, which carries that day's link-preview tags and
+ * forwards to the game (scripts/previews.ts); otherwise it's the hash route.
  */
 export function puzzlePath(p: Puzzle, staticPages: boolean): string {
-  if (p.day && staticPages && DAY_RE.test(p.day) && p.mode !== 'star') return pagePath(p.day, p.mode);
+  if (p.day && staticPages && DAY_RE.test(p.day)) return pagePath(p.day, p.mode);
   return p.day ? href({ name: 'daily', day: p.day, mode: p.mode, vs: null }) : href({ name: 'play', qid: p.start, mode: p.mode, vs: null, target: p.target });
 }
 
@@ -36,8 +36,8 @@ export function puzzleUrl(p: Puzzle): string {
 }
 
 /** Shares on phones, copies to the clipboard elsewhere. */
-export function shareButton(text: string): HTMLButtonElement {
-  const btn = h('button', { class: 'btn primary', type: 'button' }, 'Share result');
+export function shareButton(text: string, label = 'Share result', primary = true): HTMLButtonElement {
+  const btn = h('button', { class: primary ? 'btn primary' : 'btn', type: 'button' }, label);
   btn.addEventListener('click', async () => {
     try {
       if (navigator.share && matchMedia('(pointer: coarse)').matches) {
@@ -49,7 +49,7 @@ export function shareButton(text: string): HTMLButtonElement {
     } catch {
       btn.textContent = 'Couldn’t copy';
     }
-    setTimeout(() => (btn.textContent = 'Share result'), 2000);
+    setTimeout(() => (btn.textContent = label), 2000);
   });
   return btn;
 }
@@ -430,6 +430,10 @@ function openShareSheet(ctx: ResultContext, images: CardImages, videos: Map<bool
   });
 
   document.body.append(dialog);
+  // It lives outside the screen it came from, so going Back (or anywhere else) closes it.
+  onLeave(() => {
+    if (dialog.open) dialog.close();
+  });
   dialog.showModal();
   show();
 }

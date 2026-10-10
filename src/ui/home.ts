@@ -117,7 +117,25 @@ function dailyCard(day: string, person: Person, played: DailyRecord | null, play
     // For anyone who'd rather not end up at JT: the same start, heading for the day's star.
     star &&
       (playedStar
-        ? h('p', { class: 'hard-link' }, `Star daily, to ${star.star.name}: ${playedStar.gaveUp ? 'gave up' : plural(playedStar.moves.length, 'film')} ${emojiRow(playedStar.moves)} · par ${star.par}`)
+        ? h(
+            'div',
+            { class: 'star-row' },
+            shareButton(
+              shareText({
+                daily: n,
+                mode: 'star',
+                start: person.name,
+                goal: { id: star.star.id, name: star.star.name, mode: 'star' },
+                moves: playedStar.moves,
+                par: playedStar.par,
+                gaveUp: playedStar.gaveUp,
+                url: puzzleUrl({ day, start: person.id, mode: 'star', target: star.star.id }),
+              }),
+              'Share',
+              false,
+            ),
+            h('span', { class: 'star-note' }, `Star daily, to ${star.star.name}: ${playedStar.gaveUp ? 'gave up' : plural(playedStar.moves.length, 'film')} ${emojiRow(playedStar.moves)} · par ${star.par}`),
+          )
         : h(
             'div',
             { class: 'star-row' },

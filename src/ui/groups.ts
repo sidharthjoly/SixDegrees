@@ -1,4 +1,5 @@
 import { cleanName, MAX_NAME_LENGTH } from '../challenge-code';
+import { dailyStar } from '../data';
 import { dayKey, dayNumber, plural } from '../logic';
 import {
   GROUP_CODE_RE,
@@ -181,7 +182,10 @@ export async function renderGroup(code: string, gen: number): Promise<void> {
   const day = dayKey(new Date());
   let board: GroupBoard | null;
   try {
-    board = await groupBoard(code, day);
+    // The star daily's star names its tab; the board does without if it won't load.
+    const [fetched, star] = await Promise.all([groupBoard(code, day), dailyStar(day).catch(() => null)]);
+    board = fetched;
+    starName = star?.star.name ?? null;
   } catch {
     if (isCurrent(gen)) renderMessage('Couldn’t load the group', 'Check your connection and try again.');
     return;
@@ -198,6 +202,8 @@ export async function renderGroup(code: string, gen: number): Promise<void> {
 
 /** The group page as last drawn, while it's open: removals redraw from it (see ownerCard). */
 let shown: { board: GroupBoard; day: string; mode: Mode } | null = null;
+/** Today's star daily's star, for its tab. */
+let starName: string | null = null;
 /** A message for the group's starter on the next group page drawn, after a new code. */
 let nextNote = '';
 
@@ -311,7 +317,9 @@ function todayCard(board: GroupBoard, day: string, mode: Mode, redraw: (mode: Mo
     'section',
     { class: 'card group-today' },
     h('h2', null, `Daily #${dayNumber(day)}`),
-    anyOther || mode !== 'normal' ? h('div', { class: 'chips', role: 'group', 'aria-label': 'Mode' }, tab('normal', 'Normal'), tab('hard', 'Hard'), tab('star', 'Star')) : null,
+    anyOther || mode !== 'normal'
+      ? h('div', { class: 'chips', role: 'group', 'aria-label': 'Mode' }, tab('normal', 'Normal'), tab('hard', 'Hard'), tab('star', starName ? `Star: ${starName}` : 'Star'))
+      : null,
     h('p', { class: 'muted' }, played ? `${played} of ${plural(board.members.length, 'member')} played` : 'Nobody has played yet today.'),
     boardList(board.members, mode),
   );

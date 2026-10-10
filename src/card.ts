@@ -197,6 +197,8 @@ export interface PreviewCard {
   pills: string[];
   blurb: string;
   site: string;
+  /** Who the daily heads for, in the title; Justin Timberlake when left out. */
+  goal?: string;
 }
 
 const films = (n: number) => `${n} ${n === 1 ? 'film' : 'films'}`;
@@ -958,7 +960,13 @@ export function drawPreviewCard(ctx: Ctx, c: PreviewCard): void {
 
   const x = 640;
   const colW = W - x - 50;
-  ['SIX DEGREES', 'OF JUSTIN', 'TIMBERLAKE'].forEach((line, i) => outlinedText(ctx, line, x, 92 + i * 66, 52));
+  // "SIX DEGREES / OF JUSTIN / TIMBERLAKE": the goal's first name with "OF", the rest below.
+  const [first, ...rest] = (c.goal ?? 'Justin Timberlake').toUpperCase().split(' ');
+  const title = ['SIX DEGREES', `OF ${first}`, ...(rest.length > 0 ? [rest.join(' ')] : [])];
+  const measure = measureWith(ctx, display);
+  let size = 52;
+  while (size > 30 && title.some((line) => measure(line, size) > colW)) size--;
+  title.forEach((line, i) => outlinedText(ctx, line, x, 92 + (i * 66 * size) / 52, size));
 
   let px = x;
   c.pills.forEach((label, i) => {

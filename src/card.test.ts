@@ -275,4 +275,19 @@ describe('drawPreviewCard', () => {
     drawPreviewCard(ctx, { tag: 'Daily #1', name: 'Pelé', foot: '8 Oct 2026', pills: ['Daily #1'], blurb: 'Connect Pelé to Justin Timberlake.', site: 'example.com' });
     expect(ctx.texts).toEqual(expect.arrayContaining(['DAILY #1', 'Pelé', '8 OCT 2026', 'EXAMPLE.COM']));
   });
+
+  it('heads for JT in its title as ever, or for the star daily’s star', () => {
+    const base = { tag: 'Daily #1', name: 'Pelé', foot: '8 Oct 2026', pills: ['Daily #1'], blurb: '', site: 'example.com' };
+    const jt = recorder();
+    drawPreviewCard(jt, base);
+    // Each outlined line is drawn twice (shadow, then line); the second is the line's place.
+    const at = (ctx: ReturnType<typeof recorder>, s: string) => ctx.at.filter(([t]) => t === s).at(-1);
+    expect(at(jt, 'SIX DEGREES')).toEqual(['SIX DEGREES', 640, 92]);
+    expect(at(jt, 'OF JUSTIN')).toEqual(['OF JUSTIN', 640, 158]);
+    expect(at(jt, 'TIMBERLAKE')).toEqual(['TIMBERLAKE', 640, 224]);
+    const star = recorder();
+    drawPreviewCard(star, { ...base, goal: 'Robert De Niro', pills: ['Daily #1', 'Star daily'] });
+    expect(star.texts).toEqual(expect.arrayContaining(['SIX DEGREES', 'OF ROBERT', 'DE NIRO', 'STAR DAILY']));
+    expect(star.texts).not.toContain('TIMBERLAKE');
+  });
 });
